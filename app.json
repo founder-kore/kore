@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "Kore",
+    "slug": "kore",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#F0EFED"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.kore.app"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#F0EFED"
+      },
+      "package": "com.kore.app"
+    },
+    "web": {
+      "favicon": "./assets/icon.png"
+    }
+  }
+}
