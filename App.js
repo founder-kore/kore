@@ -17,7 +17,7 @@ import ProfileCardScreen from './src/screens/ProfileCardScreen';
 import EraLockScreen from './src/screens/EraLockScreen';
 import AmazonShelfScreen from './src/screens/AmazonShelfScreen';
 import { getRecommendation } from './src/services/claude';
-import { getSession, signOut as supabaseSignOut, getProfile, updateProfile, supabase } from './src/services/supabase';
+import { getSession, signOut as supabaseSignOut, getProfile, updateProfile, supabase, createPreferences } from './src/services/supabase';
 import AuthScreen from './src/screens/AuthScreen';
 import LandingScreen from './src/screens/LandingScreen';
 import { getAnimeCoverArt } from './src/services/anilist';
@@ -31,14 +31,11 @@ import {
 import { lightColors, darkColors } from './src/constants/colors';
 import { ThemeContext } from './src/constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { getSession, signOut as supabaseSignOut, getProfile, updateProfile, supabase, createPreferences } from './src/services/supabase';
 
 const ONBOARDED_KEY = 'kore_onboarded';
 const DARK_MODE_KEY = 'kore_dark_mode';
 const MAX_REROLLS_PER_SESSION = 15;
 
-// Early unlock notification copy — sent when the user hits the internal threshold
-// before they've been told the displayed threshold
 const EARLY_UNLOCK_NOTIFS = {
   kore_score: {
     title: 'コレ Kore · 30 day reward — 5 days early',
@@ -58,12 +55,13 @@ async function scheduleEarlyUnlockNotif(milestoneId) {
     if (status !== 'granted') return;
     await Notifications.scheduleNotificationAsync({
       content: { title: notif.title, body: notif.body },
-      trigger: { seconds: 30 }, // short delay so app can navigate first
+      trigger: { seconds: 30 },
     });
   } catch (e) {
     console.log('Could not schedule early unlock notif:', e);
   }
 }
+
 const SURPRISE_VIBES       = ['Chill', 'Hype', 'Emotional', 'Curious', 'Escapist', 'Social'];
 const SURPRISE_STORY_TYPES = ['Action-packed', 'Slow burn', 'Feel-good', 'Mind-bending', 'Emotional gut-punch', 'Dark & gritty'];
 const SURPRISE_COMMITMENTS = ['A few episodes of a short series', 'A few episodes of anything', 'Start and finish a short series', 'Start a long series'];
@@ -103,11 +101,9 @@ export default function App() {
   const [pendingMilestoneAction, setPendingMilestoneAction] = useState(null);
   const [previousScreen, setPreviousScreen] = useState(null);
   const [sessionRecommended, setSessionRecommended] = useState([]);
-  const [affiliateRewardType, setAffiliateRewardType] = useState(null); // 'cdjapan' | 'nordvpn'
-
-
+  const [affiliateRewardType, setAffiliateRewardType] = useState(null);
   const [isOffline, setIsOffline] = useState(false);
-  const [resultKey, setResultKey] = useState(0); // increments each fetch to force ResultScreen remount
+  const [resultKey, setResultKey] = useState(0);
   const [rerollCount, setRerollCount] = useState(0);
   const [rerollCoolingDown, setRerollCoolingDown] = useState(false);
   const rerollTimerRef = useRef(null);
@@ -115,45 +111,41 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
-  // await AsyncStorage.clear();
-  const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
-  setIsDark(savedDarkMode === 'true');
+      const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
+      setIsDark(savedDarkMode === 'true');
 
-  // Handle PKCE OAuth callback — exchange code for session if present in URL
-  if (typeof window !== 'undefined') {
-    const params = new URLSearchParams(window.location.search);
-    const code = params.get('code');
-    if (code) {
-      try {
-        await supabase.auth.exchangeCodeForSession(code);
-        // Clean the URL so the code isn't reused on next load
-        window.history.replaceState({}, '', window.location.pathname);
-      } catch (e) {
-        console.log('OAuth code exchange failed:', e);
+      // Handle PKCE OAuth callback — exchange code for session if present in URL
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        const code = params.get('code');
+        if (code) {
+          try {
+            await supabase.auth.exchangeCodeForSession(code);
+            window.history.replaceState({}, '', window.location.pathname);
+          } catch (e) {
+            console.log('OAuth code exchange failed:', e);
+          }
+        }
       }
-    }
-  }
 
-  const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
+      const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
 
-  try {
-    const guestMode = await AsyncStorage.getItem('kore_guest_mode');
+      try {
+        const guestMode = await AsyncStorage.getItem('kore_guest_mode');
+        const sessionResult = await Promise.race([getSession(), timeout]);
 
-const sessionResult = await Promise.race([getSession(), timeout]);
-
-if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
-  setUser(sessionResult.user);
-  setIsGuest(false);
-  setActiveUser(sessionResult.user.id);
-  loadUserProfile(sessionResult.user.id);
-  getStreak().then(setStreak);
-  setScreen('home');
-} else if (guestMode === 'true') {
+        if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
+          setUser(sessionResult.user);
+          setIsGuest(false);
+          setActiveUser(sessionResult.user.id);
+          loadUserProfile(sessionResult.user.id);
+          getStreak().then(setStreak);
+          setScreen('home');
+        } else if (guestMode === 'true') {
           setIsGuest(true);
           const onboarded = await AsyncStorage.getItem(ONBOARDED_KEY);
           setScreen(onboarded ? 'home' : 'onboarding');
         } else {
-          // No session yet — onAuthStateChange will handle INITIAL_SESSION
           setScreen('landing');
         }
       } catch (e) {
@@ -166,48 +158,49 @@ if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
       getStreak().then(setStreak);
     }
 
-    // Listen for auth changes
-const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION' || event === 'TOKEN_REFRESHED') && session?.user) {
         setUser(session.user);
         setIsGuest(false);
         setActiveUser(session.user.id);
         await AsyncStorage.removeItem('kore_guest_mode');
+
         let profile = await getProfile(session.user.id);
 
-// Retry once — database trigger may still be creating the profile row
-if (!profile) {
-  await new Promise(res => setTimeout(res, 1500));
-  profile = await getProfile(session.user.id);
-}
+        // Retry once — trigger may still be creating the profile row
+        if (!profile) {
+          await new Promise(res => setTimeout(res, 1500));
+          profile = await getProfile(session.user.id);
+        }
 
-if (profile) {
-  // Ensure preferences row exists (may not exist for new users)
-  await createPreferences(session.user.id);
-  const googleAvatar = session.user.user_metadata?.avatar_url;
-  if (googleAvatar && !profile.avatar_url) {
-    await updateProfile(session.user.id, { avatar_url: googleAvatar });
-    setUserProfile({ ...profile, avatar_url: googleAvatar });
-  } else {
-    setUserProfile(profile);
-  }
-  setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
-  setTimeout(() => {
-    getStreak().then(setStreak);
-    getWatchedList().then(setWatchedList);
-    getFavoriteGenres().then(setFavoriteGenres);
-  }, 300);
-} else {
-  setScreen('auth_profile_setup');
-}
+        if (profile) {
+          await createPreferences(session.user.id);
+          const googleAvatar = session.user.user_metadata?.avatar_url;
+          if (googleAvatar && !profile.avatar_url) {
+            await updateProfile(session.user.id, { avatar_url: googleAvatar });
+            setUserProfile({ ...profile, avatar_url: googleAvatar });
+          } else {
+            setUserProfile(profile);
+          }
+          setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
+          setTimeout(() => {
+            getStreak().then(setStreak);
+            getWatchedList().then(setWatchedList);
+            getFavoriteGenres().then(setFavoriteGenres);
+          }, 300);
+        } else {
+          setScreen('auth_profile_setup');
+        }
       } else if (event === 'SIGNED_OUT') {
         clearActiveUser();
         setUser(null);
         setUserProfile(null);
       }
     });
+
     init();
-const handleOffline = () => setIsOffline(true);
+
+    const handleOffline = () => setIsOffline(true);
     const handleOnline  = () => setIsOffline(false);
     if (typeof window !== 'undefined') {
       window.addEventListener('offline', handleOffline);
@@ -217,7 +210,7 @@ const handleOffline = () => setIsOffline(true);
     return () => {
       if (rerollTimerRef.current) clearTimeout(rerollTimerRef.current);
       subscription?.unsubscribe();
-if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined') {
         window.removeEventListener('offline', handleOffline);
         window.removeEventListener('online',  handleOnline);
       }
@@ -252,7 +245,7 @@ if (typeof window !== 'undefined') {
     setIsGuest(true);
     clearActiveUser();
     setStreak(0);
-    navigateTo('onboarding'); 
+    navigateTo('onboarding');
   };
 
   const handleSignOut = async () => {
@@ -291,7 +284,7 @@ if (typeof window !== 'undefined') {
     setRerollCoolingDown(false);
     setSessionRecommended([]);
 
-    const newStreak  = await updateStreak();
+    const newStreak = await updateStreak();
     setStreak(newStreak);
 
     const newMilestone = await getNewlyUnlockedMilestone(newStreak);
@@ -301,12 +294,9 @@ if (typeof window !== 'undefined') {
       setPendingMilestoneAction(() => () =>
         fetchRecommendation({ ...answers, ...options }, watchedList, favoriteGenres, [])
       );
-
-      // Schedule early unlock push notification if this is an early unlock milestone
       if (newMilestone.days < newMilestone.displayDays) {
         scheduleEarlyUnlockNotif(newMilestone.id);
       }
-
       navigateTo('milestone');
       return;
     }
@@ -320,7 +310,7 @@ if (typeof window !== 'undefined') {
   };
 
   const fetchRecommendation = async (answers, watched, genres, currentSessionList) => {
-    setResultKey(prev => prev + 1); // force ResultScreen remount even if screen is already 'result'
+    setResultKey(prev => prev + 1);
     navigateTo('result');
     setLoading(true);
     setError(null);
@@ -358,8 +348,6 @@ if (typeof window !== 'undefined') {
         setSessionRecommended(prev => [...prev, recommendation.title]);
       }
 
-      // Fetch cover art and prefetch both images BEFORE showing the card
-      // Prevents blurry flash — images are in cache when card appears
       let art = null;
       try {
         art = await getAnimeCoverArt(recommendation.title);
@@ -369,12 +357,11 @@ if (typeof window !== 'undefined') {
           if (art.banner) jobs.push(Image.prefetch(art.banner).catch(() => {}));
           await Promise.race([
             Promise.all(jobs),
-            new Promise(res => setTimeout(res, 3000)), // 3s cap
+            new Promise(res => setTimeout(res, 3000)),
           ]);
         }
       } catch {}
 
-      // Set result and art simultaneously — images already in cache
       setResult(recommendation);
       setCoverArt(art);
 
@@ -417,44 +404,24 @@ if (typeof window !== 'undefined') {
   };
 
   const handleBack = () => {
-  navigateTo('home', () => {
-    setResult(null); setError(null); setCoverArt(null);
-    // Don't re-fetch streak here — it was already set correctly in handleSubmit
-    // Re-fetching races against the Supabase write and returns stale data
-  });
-};
+    navigateTo('home', () => {
+      setResult(null); setError(null); setCoverArt(null);
+    });
+  };
 
-  // MilestoneCelebrationScreen calls this with an action string to navigate
-  // to the right reward screen after the celebration
   const handleMilestoneContinue = (action) => {
     const savedAction = pendingMilestoneAction;
     setPendingMilestone(null);
     setPendingMilestoneAction(null);
 
     switch (action) {
-      case 'mood_insights':
-        navigateTo('mood_insights');
-        break;
-      case 'profile_card':
-        navigateTo('profile_card');
-        break;
-      case 'kore_score':
-        navigateTo('kore_score');
-        break;
-      case 'cdjapan':
-        setAffiliateRewardType('cdjapan');
-        navigateTo('affiliate_reward');
-        break;
-      case 'nordvpn':
-        setAffiliateRewardType('nordvpn');
-        navigateTo('affiliate_reward');
-        break;
-      case 'era_lock':
-        navigateTo('era_lock');
-        break;
-      case 'amazon_shelf':
-        navigateTo('amazon_shelf');
-        break;
+      case 'mood_insights':   navigateTo('mood_insights'); break;
+      case 'profile_card':    navigateTo('profile_card'); break;
+      case 'kore_score':      navigateTo('kore_score'); break;
+      case 'cdjapan':         setAffiliateRewardType('cdjapan'); navigateTo('affiliate_reward'); break;
+      case 'nordvpn':         setAffiliateRewardType('nordvpn'); navigateTo('affiliate_reward'); break;
+      case 'era_lock':        navigateTo('era_lock'); break;
+      case 'amazon_shelf':    navigateTo('amazon_shelf'); break;
       case 'home':
       default:
         navigateTo('home');
@@ -470,7 +437,6 @@ if (typeof window !== 'undefined') {
     setCoverArt(savedArt);
     navigateTo('detail_view');
 
-    // Fetch fresh banner in background if not saved
     if (!anime.banner && anime.title) {
       try {
         const freshArt = await getAnimeCoverArt(anime.title);
@@ -498,10 +464,8 @@ if (typeof window !== 'undefined') {
           { backgroundColor: themeColors.bg },
           screen !== 'onboarding' && { opacity: fadeAnim },
         ]}>
-
-
-          {screen === 'landing'    && <LandingScreen onGetStarted={() => navigateTo('auth')} />}
-          {screen === 'auth'       && <AuthScreen onAuthSuccess={handleAuthSuccess} onContinueAsGuest={handleContinueAsGuest} />}
+          {screen === 'landing' && <LandingScreen onGetStarted={() => navigateTo('auth')} />}
+          {screen === 'auth' && <AuthScreen onAuthSuccess={handleAuthSuccess} onContinueAsGuest={handleContinueAsGuest} />}
           {screen === 'auth_profile_setup' && (
             <AuthScreen
               onAuthSuccess={async () => {
@@ -557,7 +521,15 @@ if (typeof window !== 'undefined') {
             />
           )}
 
-          {screen === 'profile' && <ProfileScreen onBack={handleBackFromProfile} streak={streak} onSignOut={handleSignOut} userProfile={userProfile} onEdit={() => navigateTo('edit_profile')} />}
+          {screen === 'profile' && (
+            <ProfileScreen
+              onBack={handleBackFromProfile}
+              streak={streak}
+              onSignOut={handleSignOut}
+              userProfile={userProfile}
+              onEdit={() => navigateTo('edit_profile')}
+            />
+          )}
           {screen === 'edit_profile' && (
             <EditProfileScreen
               onBack={() => navigateTo('profile')}
