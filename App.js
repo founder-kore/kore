@@ -218,7 +218,8 @@ if (typeof window !== 'undefined') {
     await AsyncStorage.setItem('kore_guest_mode', 'true');
     setIsGuest(true);
     clearActiveUser();
-    navigateTo('onboarding');
+    setStreak(0);
+    navigateTo('onboarding'); 
   };
 
   const handleSignOut = async () => {
