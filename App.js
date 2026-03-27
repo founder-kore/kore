@@ -165,9 +165,12 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event,
             setUserProfile(profile);
           }
           setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
-getStreak().then(setStreak);
-getWatchedList().then(setWatchedList);
-getFavoriteGenres().then(setFavoriteGenres);
+// Small delay to ensure setActiveUser has propagated before reading cloud data
+setTimeout(() => {
+  getStreak().then(setStreak);
+  getWatchedList().then(setWatchedList);
+  getFavoriteGenres().then(setFavoriteGenres);
+}, 300);
         } else {
           setScreen('auth_profile_setup');
         }
@@ -390,7 +393,8 @@ if (typeof window !== 'undefined') {
   const handleBack = () => {
   navigateTo('home', () => {
     setResult(null); setError(null); setCoverArt(null);
-    getStreak().then(setStreak);
+    // Don't re-fetch streak here — it was already set correctly in handleSubmit
+    // Re-fetching races against the Supabase write and returns stale data
   });
 };
 
