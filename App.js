@@ -106,6 +106,7 @@ export default function App() {
 
 
   const [isOffline, setIsOffline] = useState(false);
+  const [resultKey, setResultKey] = useState(0); // increments each fetch to force ResultScreen remount
   const [rerollCount, setRerollCount] = useState(0);
   const [rerollCoolingDown, setRerollCoolingDown] = useState(false);
   const rerollTimerRef = useRef(null);
@@ -120,12 +121,7 @@ export default function App() {
       const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
 
 try {
-        // Always clear stale guest mode on fresh load — guests have no account
-        // to restore, so silently resuming guest state across refreshes is wrong.
-        // This ensures returning visitors always see the landing page unless
-        // they have a real authenticated session.
-        await AsyncStorage.removeItem('kore_guest_mode');
-
+        const guestMode = await AsyncStorage.getItem('kore_guest_mode');
         const sessionResult = await Promise.race([getSession(), timeout]);
 
         if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
@@ -134,8 +130,12 @@ try {
           setActiveUser(sessionResult.user.id);
           loadUserProfile(sessionResult.user.id);
           setScreen('home');
+        } else if (guestMode === 'true') {
+          setIsGuest(true);
+          const onboarded = await AsyncStorage.getItem(ONBOARDED_KEY);
+          setScreen(onboarded ? 'home' : 'onboarding');
         } else {
-          // No session — show landing page for all unauthenticated users
+          // No session yet — onAuthStateChange will handle INITIAL_SESSION
           setScreen('landing');
         }
       } catch (e) {
@@ -288,6 +288,7 @@ if (typeof window !== 'undefined') {
   };
 
   const fetchRecommendation = async (answers, watched, genres, currentSessionList) => {
+    setResultKey(prev => prev + 1); // force ResultScreen remount even if screen is already 'result'
     navigateTo('result');
     setLoading(true);
     setError(null);
@@ -497,6 +498,7 @@ if (typeof window !== 'undefined') {
 
           {screen === 'result' && (
             <ResultScreen
+              key={resultKey}
               result={result} coverArt={coverArt} loading={loading} error={error}
               onBack={handleBack} onGenerateAnother={handleGenerateAnother}
               rerollCoolingDown={rerollCoolingDown} rerollCount={rerollCount}
