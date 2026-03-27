@@ -225,3 +225,21 @@ export async function updateCloudPreferences(userId, updates) {
     .eq('user_id', userId);
   if (error) throw error;
 }
+
+export async function createPreferences(userId) {
+  const { error } = await supabase
+    .from('preferences')
+    .insert({
+      user_id: userId,
+      streak: 0,
+      last_used: null,
+      favorite_genres: [],
+      milestones_seen: [],
+      era_lock: null,
+      directors_cut: false,
+      mix_hidden_gems: false,
+    })
+    .onConflict('user_id')
+    .ignore();
+  if (error) console.log('Preferences create error:', error);
+}

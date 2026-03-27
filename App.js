@@ -31,6 +31,7 @@ import {
 import { lightColors, darkColors } from './src/constants/colors';
 import { ThemeContext } from './src/constants/theme';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getSession, signOut as supabaseSignOut, getProfile, updateProfile, supabase, createPreferences } from './src/services/supabase';
 
 const ONBOARDED_KEY = 'kore_onboarded';
 const DARK_MODE_KEY = 'kore_dark_mode';
@@ -181,6 +182,8 @@ if (!profile) {
 }
 
 if (profile) {
+  // Ensure preferences row exists (may not exist for new users)
+  await createPreferences(session.user.id);
   const googleAvatar = session.user.user_metadata?.avatar_url;
   if (googleAvatar && !profile.avatar_url) {
     await updateProfile(session.user.id, { avatar_url: googleAvatar });
