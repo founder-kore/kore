@@ -87,21 +87,26 @@ switchMode('profile');
 
   // ── Google sign in
   const handleGoogle = async () => {
-    setLoading(true); setError('');
-    try {
-      const { data, error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: Platform.OS === 'web' ? window.location.origin : 'kore://auth/callback',
+  setLoading(true); setError('');
+  try {
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: Platform.OS === 'web'
+          ? `${window.location.origin}`
+          : 'kore://auth/callback',
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent',
         },
-      });
-      if (error) throw error;
-      // On web this redirects automatically
-    } catch (e) {
-      setError('Google sign in failed. Try email instead.');
-      setLoading(false);
-    }
-  };
+      },
+    });
+    if (error) throw error;
+  } catch (e) {
+    setError('Google sign in failed. Try email instead.');
+    setLoading(false);
+  }
+};
 
   // ── Profile creation after signup
   const handleCreateProfile = async () => {
