@@ -119,13 +119,12 @@ switchMode('profile');
     let lastError;
     for (let attempt = 0; attempt < 5; attempt++) {
       try {
-        await createProfile({
-          userId,
-          username: username.trim().toLowerCase(),
-          displayName: displayName.trim(),
-          avatarColor,
-          avatarUrl: googleAvatar || null,
-        });
+        await updateProfile(userId, {
+  username: username.trim().toLowerCase(),
+  display_name: displayName.trim(),
+  avatar_color: avatarColor,
+  avatar_url: googleAvatar || null,
+});
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         onAuthSuccess();
         return;
