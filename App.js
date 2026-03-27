@@ -165,6 +165,9 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event,
             setUserProfile(profile);
           }
           setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
+getStreak().then(setStreak);
+getWatchedList().then(setWatchedList);
+getFavoriteGenres().then(setFavoriteGenres);
         } else {
           setScreen('auth_profile_setup');
         }
