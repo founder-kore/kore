@@ -105,29 +105,45 @@ switchMode('profile');
 
   // ── Profile creation after signup
   const handleCreateProfile = async () => {
-    if (!username.trim())     { setError('Username is required'); return; }
-    if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('Letters, numbers and underscores only'); return; }
-    if (!displayName.trim())  { setError('Display name is required'); return; }
-    setLoading(true); setError('');
-    try {
-      const available = await checkUsernameAvailable(username.trim().toLowerCase());
-      if (!available) { setError('Username taken — try another'); setLoading(false); return; }
+  if (!username.trim())     { setError('Username is required'); return; }
+  if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('Letters, numbers and underscores only'); return; }
+  if (!displayName.trim())  { setError('Display name is required'); return; }
+  setLoading(true); setError('');
+  try {
+    const available = await checkUsernameAvailable(username.trim().toLowerCase());
+    if (!available) { setError('Username taken — try another'); setLoading(false); return; }
 
-      const googleAvatar = await getGoogleAvatarUrl();
+    const googleAvatar = await getGoogleAvatarUrl();
 
-      await createProfile({
-        userId,
-        username: username.trim().toLowerCase(),
-        displayName: displayName.trim(),
-        avatarColor,
-        avatarUrl: googleAvatar || null,
-      });
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onAuthSuccess();
-    } catch (e) {
-      setError(e.message || 'Could not create profile.');
-    } finally { setLoading(false); }
-  };
+    // On production, auth user may not be committed yet — retry up to 5 times
+    let lastError;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      try {
+        await createProfile({
+          userId,
+          username: username.trim().toLowerCase(),
+          displayName: displayName.trim(),
+          avatarColor,
+          avatarUrl: googleAvatar || null,
+        });
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        onAuthSuccess();
+        return;
+      } catch (e) {
+        lastError = e;
+        if (e.message?.includes('foreign key')) {
+          // Auth user not committed yet — wait and retry
+          await new Promise(res => setTimeout(res, 1000));
+        } else {
+          throw e; // Different error — don't retry
+        }
+      }
+    }
+    throw lastError;
+  } catch (e) {
+    setError(e.message || 'Could not create profile.');
+  } finally { setLoading(false); }
+};
 
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : '#E0DFDD';
