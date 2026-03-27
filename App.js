@@ -227,7 +227,7 @@ if (typeof window !== 'undefined') {
     setUserProfile(null);
     setIsGuest(false);
     await AsyncStorage.multiRemove([
-      'kore_guest_mode', 'kore_onboarded',
+      'kore_guest_mode',
       'kore_watched_list', 'kore_history', 'kore_ratings',
       'kore_watch_later', 'kore_streak', 'kore_last_used',
       'kore_favorite_genres', 'kore_milestones_seen',
