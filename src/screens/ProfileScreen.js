@@ -485,8 +485,8 @@ onPress={() => {
               style={styles.signOutBtn}
               onPress={async () => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                try { await signOut(); } catch {}
                 if (onSignOut) onSignOut();
+                try { await signOut(); } catch {}
               }}
               activeOpacity={0.7}
             >
