@@ -368,17 +368,29 @@ export default function ResultScreen({
     </SafeAreaView>
   );
 
-  if (error) return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.snow }]}>
-      <View style={styles.centered}>
-        <Text style={[styles.errorText, { color: colors.ember }]}>Something went wrong</Text>
-        <Text style={[styles.errorSub, { color: colors.charcoal }]}>{error}</Text>
-        <TouchableOpacity style={[styles.tryAgainBtn, { borderColor: colors.border }]} onPress={onBack}>
-          <Text style={[styles.tryAgainText, { color: colors.charcoal }]}>← Try again</Text>
+if (error) return (
+  <SafeAreaView style={[styles.container, { backgroundColor: colors.snow }]}>
+    <View style={styles.centered}>
+      <Text style={[styles.errorText, { color: colors.ember }]}>Something went wrong</Text>
+      <Text style={[styles.errorSub, { color: colors.charcoal }]}>
+        {error?.includes('timeout') || error?.includes('fetch')
+          ? 'The server took too long to respond — this happens occasionally. Try again.'
+          : error}
+      </Text>
+      {onGenerateAnother && (
+        <TouchableOpacity
+          style={[styles.generateBtn, { backgroundColor: colors.ember, marginBottom: 10, width: '100%' }]}
+          onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); onGenerateAnother(); }}
+        >
+          <Text style={styles.generateBtnText}>Try again →</Text>
         </TouchableOpacity>
-      </View>
-    </SafeAreaView>
-  );
+      )}
+      <TouchableOpacity style={[styles.tryAgainBtn, { borderColor: colors.border, width: '100%' }]} onPress={onBack}>
+        <Text style={[styles.tryAgainText, { color: colors.charcoal }]}>← Change my answers</Text>
+      </TouchableOpacity>
+    </View>
+  </SafeAreaView>
+);
 
   if (!result) return null;
 

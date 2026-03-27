@@ -161,16 +161,28 @@ const HEADERS = {
 
 // Core API call — parses JSON response, strips any stray markdown fences
 async function callClaude(systemPrompt, userMessage, maxTokens = 1000) {
-  const response = await fetch(API_URL, {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+
+  let response;
+  try {
+    response = await fetch(API_URL, {
+      signal: controller.signal,
     method: 'POST',
     headers: HEADERS,
     body: JSON.stringify({
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: maxTokens,
-      system: systemPrompt,
-      messages: [{ role: 'user', content: userMessage }],
-    }),
-  });
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: maxTokens,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userMessage }],
+      }),
+    });
+  } catch (e) {
+    clearTimeout(timeoutId);
+    if (e.name === 'AbortError') throw new Error('Request timed out — please try again');
+    throw e;
+  }
+  clearTimeout(timeoutId);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || 'API call failed');
   const clean = data.content[0].text.replace(/```json|```/g, '').trim();
