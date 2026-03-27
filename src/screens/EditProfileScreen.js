@@ -67,7 +67,7 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
     if (status !== 'granted') { setError('Camera roll permission needed'); return; }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ImagePicker.MediaType.Images, // ← was MediaTypeOptions.Images (deprecated)
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
