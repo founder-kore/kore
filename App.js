@@ -155,25 +155,31 @@ const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event,
         setIsGuest(false);
         setActiveUser(session.user.id);
         await AsyncStorage.removeItem('kore_guest_mode');
-        const profile = await getProfile(session.user.id);
-        if (profile) {
-          const googleAvatar = session.user.user_metadata?.avatar_url;
-          if (googleAvatar && !profile.avatar_url) {
-            await updateProfile(session.user.id, { avatar_url: googleAvatar });
-            setUserProfile({ ...profile, avatar_url: googleAvatar });
-          } else {
-            setUserProfile(profile);
-          }
-          setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
-// Small delay to ensure setActiveUser has propagated before reading cloud data
-setTimeout(() => {
-  getStreak().then(setStreak);
-  getWatchedList().then(setWatchedList);
-  getFavoriteGenres().then(setFavoriteGenres);
-}, 300);
-        } else {
-          setScreen('auth_profile_setup');
-        }
+        let profile = await getProfile(session.user.id);
+
+// Retry once — database trigger may still be creating the profile row
+if (!profile) {
+  await new Promise(res => setTimeout(res, 1500));
+  profile = await getProfile(session.user.id);
+}
+
+if (profile) {
+  const googleAvatar = session.user.user_metadata?.avatar_url;
+  if (googleAvatar && !profile.avatar_url) {
+    await updateProfile(session.user.id, { avatar_url: googleAvatar });
+    setUserProfile({ ...profile, avatar_url: googleAvatar });
+  } else {
+    setUserProfile(profile);
+  }
+  setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
+  setTimeout(() => {
+    getStreak().then(setStreak);
+    getWatchedList().then(setWatchedList);
+    getFavoriteGenres().then(setFavoriteGenres);
+  }, 300);
+} else {
+  setScreen('auth_profile_setup');
+}
       } else if (event === 'SIGNED_OUT') {
         clearActiveUser();
         setUser(null);
