@@ -122,15 +122,19 @@ export default function App() {
 
 try {
         const guestMode = await AsyncStorage.getItem('kore_guest_mode');
-        const sessionResult = await Promise.race([getSession(), timeout]);
+        // Give Supabase time to process OAuth callback hash from URL
+await new Promise(res => setTimeout(res, 500));
 
-        if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
-          setUser(sessionResult.user);
-          setIsGuest(false);
-          setActiveUser(sessionResult.user.id);
-          loadUserProfile(sessionResult.user.id);
-          setScreen('home');
-        } else if (guestMode === 'true') {
+const sessionResult = await Promise.race([getSession(), timeout]);
+
+if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
+  setUser(sessionResult.user);
+  setIsGuest(false);
+  setActiveUser(sessionResult.user.id);
+  loadUserProfile(sessionResult.user.id);
+  getStreak().then(setStreak);
+  setScreen('home');
+} else if (guestMode === 'true') {
           setIsGuest(true);
           const onboarded = await AsyncStorage.getItem(ONBOARDED_KEY);
           setScreen(onboarded ? 'home' : 'onboarding');
