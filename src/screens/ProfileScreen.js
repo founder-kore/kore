@@ -55,22 +55,6 @@ function ToggleRow({ label, sub, value, onToggle, colors, borderC, last }) {
   );
 }
 
-function ArrowRow({ label, sub, onPress, colors, borderC, last }) {
-  return (
-    <TouchableOpacity
-      style={[styles.menuRow, { borderBottomColor: borderC }, last && { borderBottomWidth: 0 }]}
-      onPress={onPress}
-      activeOpacity={0.7}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.menuLabel, { color: colors.ink }]}>{label}</Text>
-        {sub ? <Text style={[styles.menuSub, { color: colors.charcoal }]}>{sub}</Text> : null}
-      </View>
-      <Text style={[styles.menuArrow, { color: colors.charcoal }]}>›</Text>
-    </TouchableOpacity>
-  );
-}
-
 function SectionBlock({ label, children, colors, cardBg, borderC }) {
   return (
     <View style={styles.sectionWrap}>
@@ -88,6 +72,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const [favoriteGenres,  setFavoriteGenres]  = useState([]);
   const [genreSearch,     setGenreSearch]     = useState('');
   const [expandedCats,    setExpandedCats]    = useState({});
+  const [genresOpen,      setGenresOpen]      = useState(false); // collapsed by default
   const [saved,           setSaved]           = useState(false);
   const [notifEnabled,    setNotifEnabled]    = useState(false);
   const [notifPermission, setNotifPermission] = useState('undetermined');
@@ -96,10 +81,11 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const [eraLock,         setEraLockLocal]    = useState(null);
   const [streakLocal,     setStreakLocal]      = useState(streak);
   const [userProfile,     setUserProfile]     = useState(propProfile || null);
-  useEffect(() => {
-  if (propProfile) setUserProfile(propProfile);
-}, [propProfile]);
   const [isGuest,         setIsGuest]         = useState(false);
+
+  useEffect(() => {
+    if (propProfile) setUserProfile(propProfile);
+  }, [propProfile]);
 
   useEffect(() => { loadData(); }, []);
 
@@ -126,8 +112,6 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
         } catch {}
       }
 
-      console.log('Profile loaded:', JSON.stringify(userProfile));
-
       const savedHour    = await AsyncStorage.getItem(NOTIF_HOUR_KEY);
       const savedEnabled = await AsyncStorage.getItem(NOTIF_ENABLED_KEY);
       if (savedHour) setNotifHour(parseInt(savedHour));
@@ -143,7 +127,10 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     await saveFavoriteGenres(favoriteGenres);
     setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    setTimeout(() => {
+      setSaved(false);
+      setGenresOpen(false); // collapse after saving
+    }, 1200);
   };
 
   const toggleGenre = (genre) => {
@@ -209,25 +196,34 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     setEraLockLocal(null);
   };
 
+  const handleToggleGenres = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    setGenresOpen(prev => !prev);
+    if (genresOpen) {
+      // closing — reset search
+      setGenreSearch('');
+    }
+  };
+
   const hiddenGemUnlocked = isUnlocked('hidden_gem',    streakLocal);
   const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal);
   const whyNowBg = isDark ? '#2A1A00' : '#FFF5EE';
   const cardBg   = isDark ? '#1A1A1A' : colors.snow;
   const borderC  = isDark ? '#2A2A2A' : colors.border;
 
-  const notifTimeLabel  = TIME_SLOTS.find(s => s.hour === notifHour)?.sub || '7:00 PM';
-  const genrePreview    = favoriteGenres.length > 0
+  const notifTimeLabel = TIME_SLOTS.find(s => s.hour === notifHour)?.sub || '7:00 PM';
+  const genrePreview   = favoriteGenres.length > 0
     ? favoriteGenres.slice(0, 3).join(' · ') + (favoriteGenres.length > 3 ? ` +${favoriteGenres.length - 3}` : '')
     : 'None set';
   const initials = userProfile
     ? (userProfile.display_name || userProfile.username || '?').slice(0, 2).toUpperCase()
     : '?';
 
-  const scrollViewRef = useRef(null);
-  const genresSectionY = useRef(0);
-
   const filteredGenres = (genres) =>
     genreSearch ? genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())) : genres;
+
+  // Whether this is the last item in the Recommendations section
+  const recsHasMore = hiddenGemUnlocked || eraLockUnlocked;
 
   return (
     <View style={{ flex: 1 }}>
@@ -241,19 +237,19 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
           <View style={styles.backBtn} />
         </View>
 
-        <ScrollView ref={scrollViewRef} contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* ── Profile card ── */}
           {!isGuest && userProfile && (
             <View style={[styles.profileCard, { backgroundColor: cardBg, borderColor: borderC }]}>
               <View style={styles.profileRow}>
-     <View style={styles.avatarWrap}>
+                <View style={styles.avatarWrap}>
                   {userProfile.avatar_url ? (
                     <Image
                       source={{ uri: userProfile.avatar_url }}
                       style={styles.avatar}
                       onError={() => setUserProfile(prev => ({ ...prev, avatar_url: null }))}
-/>
+                    />
                   ) : (
                     <View style={[styles.avatar, { backgroundColor: userProfile.avatar_color || colors.ember }]}>
                       <Text style={styles.avatarText}>{initials}</Text>
@@ -306,21 +302,103 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
           {/* ── RECOMMENDATIONS ── */}
           <SectionBlock label="RECOMMENDATIONS" colors={colors} cardBg={cardBg} borderC={borderC}>
-<ArrowRow
-              label="Favourite genres"
-              sub={genrePreview}
-onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                if (Platform.OS === 'web') {
-                  const el = document.getElementById('genres-section');
-                  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                } else {
-                  scrollViewRef.current?.scrollTo({ y: genresSectionY.current - 16, animated: true });
-                }
-              }}
-              colors={colors} borderC={borderC}
-              last={!hiddenGemUnlocked && !eraLockUnlocked}
-            />
+
+            {/* Favourite genres row — tapping expands the picker inline */}
+            <TouchableOpacity
+              style={[
+                styles.menuRow,
+                { borderBottomColor: borderC },
+                genresOpen && { backgroundColor: isDark ? '#222' : '#fafafa' },
+                !recsHasMore && !genresOpen && { borderBottomWidth: 0 },
+              ]}
+              onPress={handleToggleGenres}
+              activeOpacity={0.7}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuLabel, { color: colors.ink }]}>Favourite genres</Text>
+                <Text style={[styles.menuSub, { color: colors.charcoal }]}>{genrePreview}</Text>
+              </View>
+              <Text style={[styles.menuArrow, { color: colors.charcoal, transform: [{ rotate: genresOpen ? '90deg' : '0deg' }] }]}>›</Text>
+            </TouchableOpacity>
+
+            {/* Inline expanded genre picker */}
+            {genresOpen && (
+              <View style={[styles.genresPicker, { borderBottomColor: borderC, borderBottomWidth: recsHasMore ? 0.5 : 0 }]}>
+                <View style={[styles.searchRow, { backgroundColor: isDark ? '#2A2A2A' : colors.chalk, borderColor: borderC }]}>
+                  <Text style={{ fontSize: 14, color: colors.charcoal }}>🔍</Text>
+                  <TextInput
+                    style={[styles.searchInput, { color: colors.ink }]}
+                    placeholder="Search genres..."
+                    placeholderTextColor={colors.charcoal}
+                    value={genreSearch}
+                    onChangeText={setGenreSearch}
+                    autoCorrect={false}
+                  />
+                  {genreSearch.length > 0 && (
+                    <TouchableOpacity onPress={() => setGenreSearch('')}>
+                      <Text style={{ fontSize: 14, color: colors.charcoal }}>✕</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
+
+                {favoriteGenres.length > 0 && (
+                  <View style={styles.pillsRow}>
+                    {favoriteGenres.map(g => (
+                      <TouchableOpacity key={g} style={[styles.pill, { backgroundColor: colors.ember }]} onPress={() => removeGenre(g)}>
+                        <Text style={styles.pillText}>{g}</Text>
+                        <Text style={styles.pillX}>✕</Text>
+                      </TouchableOpacity>
+                    ))}
+                    <TouchableOpacity onPress={() => { setFavoriteGenres([]); setSaved(false); }}>
+                      <Text style={[styles.clearPillsText, { color: colors.charcoal }]}>Clear all</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+
+                {ALL_GENRES.map(cat => {
+                  const filtered = filteredGenres(cat.genres);
+                  if (filtered.length === 0) return null;
+                  const isExpanded = expandedCats[cat.category] ?? (cat.category === 'Core');
+                  return (
+                    <View key={cat.category} style={styles.genreCat}>
+                      <TouchableOpacity
+                        style={styles.catHeader}
+                        onPress={() => setExpandedCats(prev => ({ ...prev, [cat.category]: !prev[cat.category] }))}
+                      >
+                        <Text style={[styles.catTitle, { color: colors.charcoal }]}>{cat.category}</Text>
+                        <Text style={[styles.catChevron, { color: colors.charcoal }]}>{isExpanded ? '↑' : '↓'}</Text>
+                      </TouchableOpacity>
+                      {isExpanded && (
+                        <View style={styles.chipGrid}>
+                          {filtered.map(g => (
+                            <TouchableOpacity
+                              key={g}
+                              style={[styles.chip, { borderColor: borderC, backgroundColor: isDark ? '#2A2A2A' : colors.chalk },
+                                favoriteGenres.includes(g) && { backgroundColor: colors.ember, borderColor: colors.ember }]}
+                              onPress={() => toggleGenre(g)}
+                            >
+                              <Text style={[styles.chipText, { color: colors.charcoal },
+                                favoriteGenres.includes(g) && { color: '#fff', fontWeight: '500' }]}>{g}</Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+
+                <TouchableOpacity
+                  style={[styles.saveBtn, { backgroundColor: saved ? colors.chalk : isDark ? '#E8630A' : colors.ink },
+                    saved && { borderColor: colors.ember, borderWidth: 1.5 }]}
+                  onPress={handleSaveGenres}
+                >
+                  <Text style={[styles.saveBtnText, { color: saved ? colors.ember : colors.snow }]}>
+                    {saved ? '✓ Saved' : 'Save preferences'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+
             {hiddenGemUnlocked && (
               <ToggleRow
                 label="Hidden Gem mode"
@@ -331,6 +409,7 @@ onPress={() => {
                 last={!eraLockUnlocked}
               />
             )}
+
             {eraLockUnlocked && (
               <View style={[styles.menuRow, { borderBottomColor: borderC, borderBottomWidth: 0 }]}>
                 <View style={{ flex: 1 }}>
@@ -399,86 +478,6 @@ onPress={() => {
             )}
           </SectionBlock>
 
-          {/* ── Favourite genres (full expanded section) ── */}
-          <View
-            nativeID="genres-section"
-            onLayout={e => { genresSectionY.current = e.nativeEvent.layout.y; }}
-            style={[styles.sectionCard, { backgroundColor: cardBg, borderColor: borderC, padding: 14, marginBottom: 8 }]}
-          >
-            <Text style={[styles.genresTitle, { color: colors.ink }]}>Favourite genres</Text>
-            <Text style={[styles.genresSub, { color: colors.charcoal }]}>
-              These shape every recommendation Kore makes for you.
-            </Text>
-            <View style={[styles.searchRow, { backgroundColor: isDark ? '#2A2A2A' : colors.chalk, borderColor: borderC }]}>
-              <Text style={{ fontSize: 14, color: colors.charcoal }}>🔍</Text>
-              <TextInput
-                style={[styles.searchInput, { color: colors.ink }]}
-                placeholder="Search genres..."
-                placeholderTextColor={colors.charcoal}
-                value={genreSearch}
-                onChangeText={setGenreSearch}
-              />
-              {genreSearch.length > 0 && (
-                <TouchableOpacity onPress={() => setGenreSearch('')}>
-                  <Text style={{ fontSize: 14, color: colors.charcoal }}>✕</Text>
-                </TouchableOpacity>
-              )}
-            </View>
-            {favoriteGenres.length > 0 && (
-              <View style={styles.pillsRow}>
-                {favoriteGenres.map(g => (
-                  <TouchableOpacity key={g} style={[styles.pill, { backgroundColor: colors.ember }]} onPress={() => removeGenre(g)}>
-                    <Text style={styles.pillText}>{g}</Text>
-                    <Text style={styles.pillX}>✕</Text>
-                  </TouchableOpacity>
-                ))}
-                <TouchableOpacity onPress={() => { setFavoriteGenres([]); setSaved(false); }}>
-                  <Text style={[styles.clearPillsText, { color: colors.charcoal }]}>Clear all</Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            {ALL_GENRES.map(cat => {
-              const filtered = filteredGenres(cat.genres);
-              if (filtered.length === 0) return null;
-              const isExpanded = expandedCats[cat.category] ?? false;
-              return (
-                <View key={cat.category} style={styles.genreCat}>
-                  <TouchableOpacity
-                    style={styles.catHeader}
-                    onPress={() => setExpandedCats(prev => ({ ...prev, [cat.category]: !prev[cat.category] }))}
-                  >
-                    <Text style={[styles.catTitle, { color: colors.charcoal }]}>{cat.category}</Text>
-                    <Text style={[styles.catChevron, { color: colors.charcoal }]}>{isExpanded ? '↑' : '↓'}</Text>
-                  </TouchableOpacity>
-                  {isExpanded && (
-                    <View style={styles.chipGrid}>
-                      {filtered.map(g => (
-                        <TouchableOpacity
-                          key={g}
-                          style={[styles.chip, { borderColor: borderC, backgroundColor: isDark ? '#2A2A2A' : colors.chalk },
-                            favoriteGenres.includes(g) && { backgroundColor: colors.ember, borderColor: colors.ember }]}
-                          onPress={() => toggleGenre(g)}
-                        >
-                          <Text style={[styles.chipText, { color: colors.charcoal },
-                            favoriteGenres.includes(g) && { color: '#fff', fontWeight: '500' }]}>{g}</Text>
-                        </TouchableOpacity>
-                      ))}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-            <TouchableOpacity
-              style={[styles.saveBtn, { backgroundColor: saved ? colors.chalk : isDark ? '#E8630A' : colors.ink },
-                saved && { borderColor: colors.ember, borderWidth: 1.5 }]}
-              onPress={handleSaveGenres}
-            >
-              <Text style={[styles.saveBtnText, { color: saved ? colors.ember : colors.snow }]}>
-                {saved ? '✓ Saved' : 'Save preferences'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-
           {/* ── Sign out ── */}
           {!isGuest && (
             <TouchableOpacity
@@ -546,8 +545,8 @@ const styles = StyleSheet.create({
   timeSlotTitle:  { fontSize: 12, fontWeight: '500' },
   timeSlotSub:    { fontSize: 10 },
 
-  genresTitle:  { fontSize: 14, fontWeight: '500', marginBottom: 3 },
-  genresSub:    { fontSize: 12, marginBottom: 12 },
+  // Inline genre picker (expanded inside the card)
+  genresPicker: { paddingVertical: 12, paddingHorizontal: 2 },
   searchRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 0.5, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
   searchInput:  { flex: 1, fontSize: 14 },
   pillsRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginBottom: 12 },
