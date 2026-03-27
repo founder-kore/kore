@@ -338,21 +338,21 @@ export default function HistoryScreen({ onBack, onSelectAnime }) {
         <View style={styles.pillStrip}>
           {[
             { key: 'rated',    label: 'Rated',      value: totalRated,              accent: false, icon: '📋' },
-            { key: 'loved',    label: 'Loved',      value: ratings.loved.length,    accent: true,  icon: '❤️' },
-            { key: 'liked',    label: 'Liked',      value: ratings.liked.length,    accent: false, icon: '👍' },
-            { key: 'notforme', label: 'Not for me', value: ratings.disliked.length, accent: false, icon: '👻' },
+{ key: 'loved',    label: 'Loved',      value: ratings.loved.length,    accent: true,  icon: '❤️' },
+{ key: 'liked',    label: 'Liked',      value: ratings.liked.length,    accent: false, icon: '👍' },
+{ key: 'notforme', label: 'Not for me', value: ratings.disliked.length, accent: false, icon: '👻' },
           ].map(p => (
-          <TouchableOpacity
-            key={p.key}
-            style={[styles.pill, { backgroundColor: cardBg, borderColor: openPill === p.key ? colors.ember : borderC }]}
-            onPress={() => togglePill(p.key)}
-            activeOpacity={0.7}
-          >
-            <Text style={{ fontSize: 16, marginBottom: 2 }}>{p.icon}</Text>
-            <Text style={[styles.pillVal, p.accent && { color: colors.ember }]}>{p.value}</Text>
-            <Text style={[styles.pillLbl, { color: colors.charcoal }]}>{p.label}</Text>
-            <Text style={[styles.pillArr, { color: colors.charcoal }]}>{openPill === p.key ? '▴' : '▾'}</Text>
-          </TouchableOpacity>
+            <TouchableOpacity
+              key={p.key}
+              style={[styles.pill, { backgroundColor: cardBg, borderColor: openPill === p.key ? colors.ember : borderC }]}
+              onPress={() => togglePill(p.key)}
+              activeOpacity={0.7}
+            >
+              <Text style={{ fontSize: 16, marginBottom: 2 }}>{p.icon}</Text>
+              <Text style={[styles.pillVal, { color: p.accent ? colors.ember : colors.ink }]}>{p.value}</Text>
+              <Text style={[styles.pillLbl, { color: colors.charcoal }]}>{p.label}</Text>
+              <Text style={[styles.pillArr, { color: colors.charcoal }]}>{openPill === p.key ? '▴' : '▾'}</Text>
+            </TouchableOpacity>
           ))}
         </View>
 

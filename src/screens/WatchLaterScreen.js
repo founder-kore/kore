@@ -45,7 +45,7 @@ const modal = StyleSheet.create({
 });
 
 export default function WatchLaterScreen({ onBack, onSelectAnime }) {
-  const { colors } = useTheme();
+  const { colors, isDark } = useTheme();
   const [items, setItems] = useState([]);
   const [modalConfig, setModalConfig] = useState(null);
 
@@ -161,7 +161,7 @@ export default function WatchLaterScreen({ onBack, onSelectAnime }) {
                     <Text style={[styles.itemDate, { color: colors.charcoal }]}>Saved {formatDate(item.date)}</Text>
                   </View>
                   <TouchableOpacity
-                    style={styles.removeBtn}
+                    style={[styles.removeBtn, { backgroundColor: isDark ? '#2A0A0A' : '#FFECEC', borderColor: isDark ? '#4A1A1A' : '#FFCCCC' }]}
                     onPress={(e) => {
                       e.stopPropagation();
                       tapRemove(item);
@@ -173,7 +173,7 @@ export default function WatchLaterScreen({ onBack, onSelectAnime }) {
               ))}
 
               {/* Clear all at bottom */}
-              <TouchableOpacity style={styles.clearAllBtn} onPress={tapClearAll}>
+              <TouchableOpacity style={[styles.clearAllBtn, { backgroundColor: isDark ? '#2A0A0A' : '#FFF5F5', borderColor: isDark ? '#4A1A1A' : '#FFCCCC' }]} onPress={tapClearAll}>
                 <Text style={styles.clearAllText}>Clear all watch later</Text>
               </TouchableOpacity>
             </>
@@ -215,7 +215,7 @@ const styles = StyleSheet.create({
   itemMeta: { fontSize: 12 },
   itemWhyNow: { fontSize: 12, fontStyle: 'italic', lineHeight: 18 },
   itemDate: { fontSize: 11 },
-  removeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFECEC', borderWidth: 1, borderColor: '#FFCCCC' },
+  removeBtn: { width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1 },
   removeBtnText: { fontSize: 11, color: '#CC3333', fontWeight: '500' },
   clearAllBtn: { padding: 14, borderRadius: 10, borderWidth: 1.5, borderColor: '#FFCCCC', alignItems: 'center', backgroundColor: '#FFF5F5', marginTop: 4, marginBottom: 8 },
   clearAllText: { fontSize: 13, color: '#CC3333', fontWeight: '500' },

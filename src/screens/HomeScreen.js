@@ -297,11 +297,11 @@ const handleSurprise = () => {
           )}
 
           <Animated.View style={{ transform: [{ scale: surpriseAnim }] }}>
-            <TouchableOpacity style={[styles.surpriseBtn, { backgroundColor: colors.ink }]} onPress={handleSurprise}>
+            <TouchableOpacity style={[styles.surpriseBtn, { backgroundColor: isDark ? '#2A2A2A' : colors.ink }]} onPress={handleSurprise}>
               <Text style={styles.surpriseEmoji}>🎲</Text>
               <View>
-                <Text style={[styles.surpriseTitle, { color: colors.snow }]}>Surprise me</Text>
-                <Text style={[styles.surpriseSub, { color: '#999' }]}>Skip questions — just pick for me</Text>
+                <Text style={[styles.surpriseTitle, { color: isDark ? colors.ink : colors.snow }]}>Surprise me</Text>
+                <Text style={[styles.surpriseSub, { color: isDark ? colors.charcoal : '#999' }]}>Skip questions — just pick for me</Text>
               </View>
             </TouchableOpacity>
           </Animated.View>

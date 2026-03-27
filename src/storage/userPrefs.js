@@ -1,4 +1,18 @@
+// src/storage/userPrefs.js
+//
+// Cloud-aware storage layer.
+// When a user is logged in (setActiveUser called), all reads come from Supabase
+// and all writes go to both AsyncStorage and Supabase simultaneously.
+// When no user is set (guest mode), only AsyncStorage is used.
+
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import {
+  getCloudHistory, addToCloudHistory, clearCloudHistory,
+  getCloudRatings, saveCloudRating, removeCloudRating,
+  getCloudWatchLater, addToCloudWatchLater,
+  removeFromCloudWatchLater, clearCloudWatchLater,
+  getCloudPreferences, updateCloudPreferences,
+} from '../services/supabase';
 
 const KEYS = {
   WATCHED:         'kore_watched_list',
@@ -15,65 +29,99 @@ const KEYS = {
   ERA_LOCK:        'kore_era_lock',
 };
 
-// ─── MILESTONES ─────────────────────────────────────────────────────────────
-//
-// days        = internal unlock threshold (what actually triggers celebration)
-// displayDays = shown to user as the goal (creates early unlock surprise)
-//
-// User sees "earn 30-day reward" → gets it at day 25 (5 days early)
-// User sees "earn 60-day reward" → gets it at day 45 (15 days early)
-//
+// ─── ACTIVE USER ─────────────────────────────────────────────────────────────
+// Call setActiveUser(userId) from App.js when user logs in.
+// Call clearActiveUser() on sign out.
+
+let _activeUserId = null;
+
+let _prefsCache = null;
+let _prefsCacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getCachedPrefs(userId) {
+  const now = Date.now();
+  if (_prefsCache && (now - _prefsCacheTime) < CACHE_TTL) return _prefsCache;
+  const prefs = await getCloudPreferences(userId);
+  _prefsCache = prefs;
+  _prefsCacheTime = now;
+  return prefs;
+}
+
+export function clearPrefsCache() {
+  _prefsCache = null;
+  _prefsCacheTime = 0;
+}
+
+export function setActiveUser(userId) {
+  _activeUserId = userId || null;
+}
+
+export function clearActiveUser() {
+  _activeUserId = null;
+}
+
+export function getActiveUserId() {
+  return _activeUserId;
+}
+
+// ─── MILESTONES ──────────────────────────────────────────────────────────────
+
 export const MILESTONES = [
-  {
-    id: 'mood_insights',
-    days: 7,
-    displayDays: 7,
-    icon: '🧠',
-    color: '#7F77DD',
-    title: 'Mood Insights',
-    rewardType: 'content',
-  },
-  {
-    id: 'hidden_gem',
-    days: 14,
-    displayDays: 14,
-    icon: '💎',
-    color: '#1D9E75',
-    title: 'Hidden Gem Mode',
-    rewardType: 'profile_card',
-  },
-  {
-    id: 'kore_score',
-    days: 25,
-    displayDays: 30,
-    icon: '⚔️',
-    color: '#E8630A',
-    title: 'Kore Score',
-    rewardType: 'kore_score_and_nordvpn',
-  },
-  {
-    id: 'directors_cut',
-    days: 45,
-    displayDays: 60,
-    icon: '👑',
-    color: '#7F77DD',
-    title: 'Full Rewards',
-    rewardType: 'era_lock_and_amazon',
-  },
+  { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '🧠', color: '#7F77DD', title: 'Mood Insights',   rewardType: 'content' },
+  { id: 'hidden_gem',     days: 14, displayDays: 14, icon: '💎', color: '#1D9E75', title: 'Hidden Gem Mode', rewardType: 'profile_card' },
+  { id: 'kore_score',     days: 25, displayDays: 30, icon: '⚔️', color: '#E8630A', title: 'Kore Score',      rewardType: 'kore_score_and_nordvpn' },
+  { id: 'directors_cut',  days: 45, displayDays: 60, icon: '👑', color: '#7F77DD', title: 'Full Rewards',    rewardType: 'era_lock_and_amazon' },
 ];
 
-// Returns true if milestone is unlocked based on INTERNAL threshold
 export function isUnlocked(id, streak) {
   const m = MILESTONES.find(m => m.id === id);
   return m ? streak >= m.days : false;
 }
 
-// Next milestone not yet unlocked — uses displayDays for the progress bar goal
 export function getNextMilestone(streak) {
   return MILESTONES.find(m => streak < m.days) || null;
 }
 
-// ─── WATCHED LIST ────────────────────────────────────────────────────────────
+// ─── HISTORY ─────────────────────────────────────────────────────────────────
+
+export async function getHistory() {
+  try {
+    if (_activeUserId) {
+      const cloud = await getCloudHistory(_activeUserId);
+      if (cloud && cloud.length > 0) return cloud;
+    }
+    const raw = await AsyncStorage.getItem(KEYS.HISTORY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export async function addToHistory(entry) {
+  try {
+    // Always write to AsyncStorage
+    const local = await AsyncStorage.getItem(KEYS.HISTORY);
+    const history = local ? JSON.parse(local) : [];
+    const updated = [entry, ...history].slice(0, 200);
+    await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
+
+    // Also write to Supabase if logged in
+    if (_activeUserId && entry.title) {
+      addToCloudHistory(_activeUserId, entry).catch(() => {});
+    }
+
+    if (entry.title) await addToWatchedList(entry.title);
+    return updated;
+  } catch { return []; }
+}
+
+export async function clearHistory() {
+  await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify([]));
+  if (_activeUserId) {
+    clearCloudHistory(_activeUserId).catch(() => {});
+  }
+}
+
+// ─── WATCHED LIST ─────────────────────────────────────────────────────────────
 
 export async function getWatchedList() {
   try {
@@ -96,10 +144,126 @@ export async function removeFromWatchedList(title) {
   return updated;
 }
 
+// ─── RATINGS ─────────────────────────────────────────────────────────────────
+
+export async function getRatings() {
+  try {
+    if (_activeUserId) {
+      const cloud = await getCloudRatings(_activeUserId);
+      if (cloud && cloud.length > 0) return cloud;
+    }
+    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export async function saveRating(title, rating) {
+  try {
+    // AsyncStorage
+    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
+    const ratings = raw ? JSON.parse(raw) : [];
+    const updated = [{ title, rating, date: new Date().toISOString() }, ...ratings.filter(r => r.title !== title)];
+    await AsyncStorage.setItem(KEYS.RATINGS, JSON.stringify(updated));
+
+    // Supabase
+    if (_activeUserId) {
+      saveCloudRating(_activeUserId, title, rating).catch(() => {});
+    }
+
+    return updated;
+  } catch { return []; }
+}
+
+export async function removeRating(title) {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
+    const ratings = raw ? JSON.parse(raw) : [];
+    const updated = ratings.filter(r => r.title !== title);
+    await AsyncStorage.setItem(KEYS.RATINGS, JSON.stringify(updated));
+
+    if (_activeUserId) {
+      removeCloudRating(_activeUserId, title).catch(() => {});
+    }
+
+    return updated;
+  } catch { return []; }
+}
+
+export async function getRatingSummary() {
+  const ratings = await getRatings();
+  return {
+    loved:    ratings.filter(r => r.rating === 'loved').map(r => r.title),
+    liked:    ratings.filter(r => r.rating === 'liked').map(r => r.title),
+    disliked: ratings.filter(r => r.rating === 'disliked').map(r => r.title),
+  };
+}
+
+// ─── WATCH LATER ─────────────────────────────────────────────────────────────
+
+export async function getWatchLater() {
+  try {
+    if (_activeUserId) {
+      const cloud = await getCloudWatchLater(_activeUserId);
+      if (cloud && cloud.length > 0) return cloud;
+    }
+    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+export async function addToWatchLater(entry) {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
+    const list = raw ? JSON.parse(raw) : [];
+    if (list.find(i => i.title === entry.title)) return list;
+    const updated = [entry, ...list];
+    await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify(updated));
+
+    if (_activeUserId) {
+      addToCloudWatchLater(_activeUserId, entry).catch(() => {});
+    }
+
+    return updated;
+  } catch { return []; }
+}
+
+export async function removeFromWatchLater(title) {
+  try {
+    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
+    const list = raw ? JSON.parse(raw) : [];
+    const updated = list.filter(i => i.title !== title);
+    await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify(updated));
+
+    if (_activeUserId) {
+      removeFromCloudWatchLater(_activeUserId, title).catch(() => {});
+    }
+
+    return updated;
+  } catch { return []; }
+}
+
+export async function clearWatchLater() {
+  await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify([]));
+  if (_activeUserId) {
+    clearCloudWatchLater(_activeUserId).catch(() => {});
+  }
+}
+
+export async function isInWatchLater(title) {
+  const list = await getWatchLater();
+  return list.some(i => i.title === title);
+}
+
 // ─── GENRES ──────────────────────────────────────────────────────────────────
 
 export async function getFavoriteGenres() {
   try {
+    if (_activeUserId) {
+     const prefs = await getCachedPrefs(_activeUserId);
+      if (prefs?.favorite_genres && prefs.favorite_genres.length > 0) {
+        return prefs.favorite_genres;
+      }
+    }
     const raw = await AsyncStorage.getItem(KEYS.GENRES);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
@@ -107,12 +271,24 @@ export async function getFavoriteGenres() {
 
 export async function saveFavoriteGenres(genres) {
   await AsyncStorage.setItem(KEYS.GENRES, JSON.stringify(genres));
+  if (_activeUserId) {
+    updateCloudPreferences(_activeUserId, { favorite_genres: genres }).catch(() => {});
+  }
 }
 
 // ─── STREAK ──────────────────────────────────────────────────────────────────
 
 export async function getStreak() {
   try {
+    if (_activeUserId) {
+      const prefs = await getCachedPrefs(_activeUserId);
+      if (prefs?.streak !== undefined && prefs.streak !== null) {
+        // Sync to local too
+        await AsyncStorage.setItem(KEYS.STREAK, String(prefs.streak));
+        if (prefs.last_used) await AsyncStorage.setItem(KEYS.LAST_USED, prefs.last_used);
+        return prefs.streak;
+      }
+    }
     const raw = await AsyncStorage.getItem(KEYS.STREAK);
     return raw ? parseInt(raw) : 0;
   } catch { return 0; }
@@ -129,108 +305,26 @@ export async function updateStreak() {
     const newStreak = lastUsed === yesterday.toDateString() ? current + 1 : 1;
     await AsyncStorage.setItem(KEYS.STREAK, String(newStreak));
     await AsyncStorage.setItem(KEYS.LAST_USED, today);
+
+    if (_activeUserId) {
+      _prefsCache = null;
+      updateCloudPreferences(_activeUserId, { streak: newStreak, last_used: today }).catch(() => {});
+    }
+
     return newStreak;
   } catch { return 1; }
 }
 
-// ─── RATINGS ─────────────────────────────────────────────────────────────────
-
-export async function getRatings() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-export async function saveRating(title, rating) {
-  const ratings = await getRatings();
-  const updated = [{ title, rating, date: new Date().toISOString() }, ...ratings.filter(r => r.title !== title)];
-  await AsyncStorage.setItem(KEYS.RATINGS, JSON.stringify(updated));
-  return updated;
-}
-
-export async function removeRating(title) {
-  const ratings = await getRatings();
-  const updated = ratings.filter(r => r.title !== title);
-  await AsyncStorage.setItem(KEYS.RATINGS, JSON.stringify(updated));
-  return updated;
-}
-
-export async function getRatingSummary() {
-  const ratings = await getRatings();
-  return {
-    loved:    ratings.filter(r => r.rating === 'loved').map(r => r.title),
-    liked:    ratings.filter(r => r.rating === 'liked').map(r => r.title),
-    disliked: ratings.filter(r => r.rating === 'disliked').map(r => r.title),
-  };
-}
-
-// ─── HISTORY ─────────────────────────────────────────────────────────────────
-
-export async function getHistory() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.HISTORY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-export async function addToHistory(entry) {
-  const history = await getHistory();
-  const updated = [entry, ...history].slice(0, 200);
-  await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify(updated));
-  if (entry.title) await addToWatchedList(entry.title);
-  return updated;
-}
-
-export async function clearHistory() {
-  await AsyncStorage.setItem(KEYS.HISTORY, JSON.stringify([]));
-}
-
-// ─── WATCH LATER ─────────────────────────────────────────────────────────────
-
-export async function getWatchLater() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
-}
-
-export async function addToWatchLater(entry) {
-  const list = await getWatchLater();
-  if (list.find(i => i.title === entry.title)) return list;
-  const updated = [entry, ...list];
-  await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify(updated));
-  return updated;
-}
-
-export async function removeFromWatchLater(title) {
-  const list = await getWatchLater();
-  const updated = list.filter(i => i.title !== title);
-  await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify(updated));
-  return updated;
-}
-
-export async function clearWatchLater() {
-  await AsyncStorage.setItem(KEYS.WATCH_LATER, JSON.stringify([]));
-}
-
-export async function isInWatchLater(title) {
-  const list = await getWatchLater();
-  return list.some(i => i.title === title);
-}
-
-// ─── AVOID LIST ──────────────────────────────────────────────────────────────
-
-export async function getCombinedAvoidList() {
-  const [watched, history] = await Promise.all([getWatchedList(), getHistory()]);
-  const historyTitles = history.map(h => h.title).filter(Boolean);
-  return [...new Set([...watched, ...historyTitles])];
-}
-
-// ─── MILESTONES ──────────────────────────────────────────────────────────────
+// ─── MILESTONES SEEN ─────────────────────────────────────────────────────────
 
 export async function getMilestonesSeen() {
   try {
+    if (_activeUserId) {
+      const prefs = await getCachedPrefs(_activeUserId);
+      if (prefs?.milestones_seen && prefs.milestones_seen.length > 0) {
+        return prefs.milestones_seen;
+      }
+    }
     const raw = await AsyncStorage.getItem(KEYS.MILESTONES_SEEN);
     return raw ? JSON.parse(raw) : [];
   } catch { return []; }
@@ -239,15 +333,25 @@ export async function getMilestonesSeen() {
 export async function markMilestoneSeen(id) {
   const seen = await getMilestonesSeen();
   if (!seen.includes(id)) {
-    await AsyncStorage.setItem(KEYS.MILESTONES_SEEN, JSON.stringify([...seen, id]));
+    const updated = [...seen, id];
+    await AsyncStorage.setItem(KEYS.MILESTONES_SEEN, JSON.stringify(updated));
+    if (_activeUserId) {
+      updateCloudPreferences(_activeUserId, { milestones_seen: updated }).catch(() => {});
+    }
   }
 }
 
-// Checks if a milestone JUST became newly unlocked (internal threshold)
-// Returns the milestone object if it fired, null if not
 export async function getNewlyUnlockedMilestone(streak) {
   const seen = await getMilestonesSeen();
   return MILESTONES.find(m => streak >= m.days && !seen.includes(m.id)) || null;
+}
+
+// ─── AVOID LIST ──────────────────────────────────────────────────────────────
+
+export async function getCombinedAvoidList() {
+  const [watched, history] = await Promise.all([getWatchedList(), getHistory()]);
+  const historyTitles = history.map(h => h.title).filter(Boolean);
+  return [...new Set([...watched, ...historyTitles])];
 }
 
 // ─── SPECIAL MODES ───────────────────────────────────────────────────────────
@@ -271,29 +375,42 @@ export async function setDirectorsCutMode(val) {
 }
 
 export async function getMixHiddenGems() {
-  const raw = await AsyncStorage.getItem(KEYS.MIX_HIDDEN_GEMS);
-  return raw === 'true';
+  try {
+    if (_activeUserId) {
+      const prefs = await getCachedPrefs(_activeUserId);
+      if (prefs?.directors_cut !== undefined) return prefs.directors_cut === true;
+    }
+    const raw = await AsyncStorage.getItem(KEYS.MIX_HIDDEN_GEMS);
+    return raw === 'true';
+  } catch { return false; }
 }
 
 export async function setMixHiddenGems(val) {
   await AsyncStorage.setItem(KEYS.MIX_HIDDEN_GEMS, String(val));
+  if (_activeUserId) {
+    updateCloudPreferences(_activeUserId, { directors_cut: val }).catch(() => {});
+  }
 }
 
-// Era Lock — locks recommendations to a specific anime decade
-// Value is the era string e.g. '90s', '00s', or null if not set
 export async function getEraLock() {
   try {
+    if (_activeUserId) {
+      const prefs = await getCachedPrefs(_activeUserId);
+      if (prefs?.era_lock) return prefs.era_lock;
+    }
     const raw = await AsyncStorage.getItem(KEYS.ERA_LOCK);
     return raw || null;
   } catch { return null; }
 }
 
 export async function setEraLock(era) {
-  // era is a string like '70s', '80s', '90s', '00s', '10s', '20s' or null to disable
   if (era === null) {
     await AsyncStorage.removeItem(KEYS.ERA_LOCK);
   } else {
     await AsyncStorage.setItem(KEYS.ERA_LOCK, era);
+  }
+  if (_activeUserId) {
+    updateCloudPreferences(_activeUserId, { era_lock: era }).catch(() => {});
   }
 }
 

@@ -247,7 +247,7 @@ function LoadingScreen({ colors, vibe }) {
 
 export default function ResultScreen({
   result, coverArt, loading, error, onBack, onGenerateAnother,
-  rerollCoolingDown, rerollCount, maxRerolls, vibe, isDetailView = false,
+  rerollCoolingDown, rerollCount, maxRerolls, vibe, isDetailView = false, isSurprise = false,
 }) {
   const { colors, isDark } = useTheme();
   const coverOpacity  = useRef(new Animated.Value(0)).current;
@@ -414,7 +414,8 @@ export default function ResultScreen({
   const getGenerateLabel = () => {
     if (rerollCount >= maxRerolls) return `Session limit reached (${maxRerolls}/${maxRerolls})`;
     if (rerollCoolingDown) return 'Finding next pick...';
-    if (rerollCount > 0)   return `Generate another → (${rerollsLeft} left)`;
+    if (isSurprise) return rerollCount > 0 ? `Surprise me again → (${rerollsLeft} left)` : 'Surprise me again →';
+    if (rerollCount > 0) return `Generate another → (${rerollsLeft} left)`;
     return 'Generate another based on my answers →';
   };
 

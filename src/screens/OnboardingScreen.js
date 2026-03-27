@@ -264,7 +264,7 @@ export default function OnboardingScreen({ onDone }) {
   };
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: colors.snow }]}>
+    <SafeAreaView style={[styles.container, { backgroundColor: colors.chalk }]}>
       <View style={styles.inner}>
 
         {/* Progress dots */}
@@ -366,11 +366,11 @@ export default function OnboardingScreen({ onDone }) {
                 : 'Continue →'}
             </Text>
           </TouchableOpacity>
-          {isLast && (
-            <TouchableOpacity style={styles.skipBtn} onPress={onDone}>
-              <Text style={[styles.skipBtnText, { color: colors.charcoal }]}>Skip for now</Text>
-            </TouchableOpacity>
-          )}
+<TouchableOpacity style={styles.skipBtn} onPress={onDone}>
+            <Text style={[styles.skipBtnText, { color: colors.charcoal }]}>
+              {isLast ? 'Skip for now' : 'Skip intro'}
+            </Text>
+          </TouchableOpacity>
         </View>
       </View>
 
