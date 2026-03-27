@@ -1,11 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, Animated, Platform, Image } from 'react-native';
+import { StyleSheet, View, Animated, Image } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import HomeScreen from './src/screens/HomeScreen';
 import ResultScreen from './src/screens/ResultScreen';
 import ProfileScreen from './src/screens/ProfileScreen';
-import LandingScreen from './src/screens/LandingScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 import OnboardingScreen from './src/screens/OnboardingScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import WatchLaterScreen from './src/screens/WatchLaterScreen';
@@ -17,12 +17,16 @@ import ProfileCardScreen from './src/screens/ProfileCardScreen';
 import EraLockScreen from './src/screens/EraLockScreen';
 import AmazonShelfScreen from './src/screens/AmazonShelfScreen';
 import { getRecommendation } from './src/services/claude';
+import { getSession, signOut as supabaseSignOut, getProfile, updateProfile, supabase } from './src/services/supabase';
+import AuthScreen from './src/screens/AuthScreen';
+import LandingScreen from './src/screens/LandingScreen';
 import { getAnimeCoverArt } from './src/services/anilist';
 import {
   getWatchedList, getFavoriteGenres, getStreak, updateStreak,
   getRatingSummary, addToHistory, getCombinedAvoidList,
   getNewlyUnlockedMilestone, markMilestoneSeen,
   setHiddenGemMode, getDirectorsCutMode, getMixHiddenGems, getEraLock,
+  setActiveUser, clearActiveUser,
 } from './src/storage/userPrefs';
 import { lightColors, darkColors } from './src/constants/colors';
 import { ThemeContext } from './src/constants/theme';
@@ -59,12 +63,33 @@ async function scheduleEarlyUnlockNotif(milestoneId) {
     console.log('Could not schedule early unlock notif:', e);
   }
 }
+const SURPRISE_VIBES       = ['Chill', 'Hype', 'Emotional', 'Curious', 'Escapist', 'Social'];
+const SURPRISE_STORY_TYPES = ['Action-packed', 'Slow burn', 'Feel-good', 'Mind-bending', 'Emotional gut-punch', 'Dark & gritty'];
+const SURPRISE_COMMITMENTS = ['A few episodes of a short series', 'A few episodes of anything', 'Start and finish a short series', 'Start a long series'];
+function getRandomSurpriseAnswers() {
+  return {
+    vibe:       SURPRISE_VIBES[Math.floor(Math.random() * SURPRISE_VIBES.length)],
+    storyType:  SURPRISE_STORY_TYPES[Math.floor(Math.random() * SURPRISE_STORY_TYPES.length)],
+    commitment: SURPRISE_COMMITMENTS[Math.floor(Math.random() * SURPRISE_COMMITMENTS.length)],
+    _surpriseMode: true,
+  };
+}
 
 export default function App() {
   const [isDark, setIsDark] = useState(false);
   const themeColors = isDark ? darkColors : lightColors;
 
+  const loadUserProfile = async (userId) => {
+    try {
+      const profile = await getProfile(userId);
+      setUserProfile(profile);
+    } catch {}
+  };
+
   const [screen, setScreen] = useState(null);
+  const [user, setUser]     = useState(null);
+  const [isGuest, setIsGuest] = useState(false);
+  const [userProfile, setUserProfile] = useState(null);
   const [result, setResult] = useState(null);
   const [coverArt, setCoverArt] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -79,6 +104,8 @@ export default function App() {
   const [sessionRecommended, setSessionRecommended] = useState([]);
   const [affiliateRewardType, setAffiliateRewardType] = useState(null); // 'cdjapan' | 'nordvpn'
 
+
+  const [isOffline, setIsOffline] = useState(false);
   const [rerollCount, setRerollCount] = useState(0);
   const [rerollCoolingDown, setRerollCoolingDown] = useState(false);
   const rerollTimerRef = useRef(null);
@@ -86,36 +113,83 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
-      // NOTE: Do NOT call AsyncStorage.clear() here — that was a debug line
-      // that wiped kore_onboarded on every load, breaking returning user sessions.
-      const onboarded     = await AsyncStorage.getItem(ONBOARDED_KEY);
+     // await AsyncStorage.clear();
       const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
       setIsDark(savedDarkMode === 'true');
-      // New users → landing page; returning users → home
-      setScreen(onboarded ? 'home' : 'landing');
+
+      const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
+
+try {
+        // Always clear stale guest mode on fresh load — guests have no account
+        // to restore, so silently resuming guest state across refreshes is wrong.
+        // This ensures returning visitors always see the landing page unless
+        // they have a real authenticated session.
+        await AsyncStorage.removeItem('kore_guest_mode');
+
+        const sessionResult = await Promise.race([getSession(), timeout]);
+
+        if (sessionResult && sessionResult !== 'timeout' && sessionResult?.user) {
+          setUser(sessionResult.user);
+          setIsGuest(false);
+          setActiveUser(sessionResult.user.id);
+          loadUserProfile(sessionResult.user.id);
+          setScreen('home');
+        } else {
+          // No session — show landing page for all unauthenticated users
+          setScreen('landing');
+        }
+      } catch (e) {
+        console.log('Init error:', e);
+        setScreen('landing');
+      }
+
       getWatchedList().then(setWatchedList);
       getFavoriteGenres().then(setFavoriteGenres);
       getStreak().then(setStreak);
     }
-    init();
 
-    // Inject Twemoji on web for consistent emoji rendering
-    if (Platform.OS === 'web') {
-      const script = document.createElement('script');
-      script.src = 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.0.3/twemoji.min.js';
-      script.crossOrigin = 'anonymous';
-      script.onload = () => {
-        const parse = () => window.twemoji?.parse(document.body, {
-          folder: 'svg', ext: '.svg',
-          base: 'https://cdnjs.cloudflare.com/ajax/libs/twemoji/15.0.3/',
-        });
-        parse();
-        new MutationObserver(parse).observe(document.body, { childList: true, subtree: true });
-      };
-      document.head.appendChild(script);
+    // Listen for auth changes
+const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session?.user) {
+        setUser(session.user);
+        setIsGuest(false);
+        setActiveUser(session.user.id);
+        await AsyncStorage.removeItem('kore_guest_mode');
+        const profile = await getProfile(session.user.id);
+        if (profile) {
+          const googleAvatar = session.user.user_metadata?.avatar_url;
+          if (googleAvatar && !profile.avatar_url) {
+            await updateProfile(session.user.id, { avatar_url: googleAvatar });
+            setUserProfile({ ...profile, avatar_url: googleAvatar });
+          } else {
+            setUserProfile(profile);
+          }
+          setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
+        } else {
+          setScreen('auth_profile_setup');
+        }
+      } else if (event === 'SIGNED_OUT') {
+        clearActiveUser();
+        setUser(null);
+        setUserProfile(null);
+      }
+    });
+    init();
+const handleOffline = () => setIsOffline(true);
+    const handleOnline  = () => setIsOffline(false);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('offline', handleOffline);
+      window.addEventListener('online',  handleOnline);
     }
 
-    return () => { if (rerollTimerRef.current) clearTimeout(rerollTimerRef.current); };
+    return () => {
+      if (rerollTimerRef.current) clearTimeout(rerollTimerRef.current);
+      subscription?.unsubscribe();
+if (typeof window !== 'undefined') {
+        window.removeEventListener('offline', handleOffline);
+        window.removeEventListener('online',  handleOnline);
+      }
+    };
   }, []);
 
   const handleToggleDarkMode = async (value) => {
@@ -123,14 +197,47 @@ export default function App() {
     await AsyncStorage.setItem(DARK_MODE_KEY, String(value));
   };
 
-  // Landing → Onboarding (new user clicked "Get started")
-  const handleLandingGetStarted = () => {
-    navigateTo('onboarding');
-  };
-
   const handleOnboardingDone = async () => {
     await AsyncStorage.setItem(ONBOARDED_KEY, 'true');
     navigateTo('home');
+  };
+
+  const handleAuthSuccess = async () => {
+    const session = await getSession();
+    if (session?.user) {
+      setUser(session.user);
+      setActiveUser(session.user.id);
+      const profile = await getProfile(session.user.id);
+      setUserProfile(profile);
+    }
+    setIsGuest(false);
+    const onboarded = await AsyncStorage.getItem('kore_onboarded');
+    navigateTo(onboarded ? 'home' : 'onboarding');
+  };
+
+  const handleContinueAsGuest = async () => {
+    await AsyncStorage.setItem('kore_guest_mode', 'true');
+    setIsGuest(true);
+    clearActiveUser();
+    setStreak(0);
+    navigateTo('onboarding'); 
+  };
+
+  const handleSignOut = async () => {
+    try { await supabaseSignOut(); } catch {}
+    clearActiveUser();
+    setUser(null);
+    setUserProfile(null);
+    setIsGuest(false);
+    await AsyncStorage.multiRemove([
+      'kore_guest_mode',
+      'kore_watched_list', 'kore_history', 'kore_ratings',
+      'kore_watch_later', 'kore_streak', 'kore_last_used',
+      'kore_favorite_genres', 'kore_milestones_seen',
+      'kore_notif_enabled', 'kore_notif_hour',
+      'kore_mix_hidden_gems', 'kore_era_lock',
+    ]);
+    navigateTo('auth');
   };
 
   const navigateTo = (newScreen, callback) => {
@@ -271,7 +378,9 @@ export default function App() {
     setRerollCoolingDown(true);
     setRerollCount(prev => prev + 1);
     rerollTimerRef.current = setTimeout(() => setRerollCoolingDown(false), 3000);
-    fetchRecommendation(lastAnswers, watchedList, favoriteGenres, sessionRecommended);
+    const answersToUse = lastAnswers._surpriseMode ? getRandomSurpriseAnswers() : lastAnswers;
+    if (lastAnswers._surpriseMode) setLastAnswers(answersToUse);
+    fetchRecommendation(answersToUse, watchedList, favoriteGenres, sessionRecommended);
   };
 
   const handleBack = () => {
@@ -342,15 +451,35 @@ export default function App() {
   return (
     <ThemeContext.Provider value={{ colors: themeColors, isDark, toggleDarkMode: handleToggleDarkMode }}>
       <View style={[styles.container, { backgroundColor: themeColors.bg }]}>
+        {isOffline && (
+          <View style={{ backgroundColor: '#CC3333', paddingVertical: 8, paddingHorizontal: 16, alignItems: 'center', zIndex: 999 }}>
+            <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>No internet connection — some features may not work</Text>
+          </View>
+        )}
         <Animated.View style={[
           styles.inner,
           { backgroundColor: themeColors.bg },
-          screen !== 'landing' && screen !== 'onboarding' && { opacity: fadeAnim },
+          screen !== 'onboarding' && { opacity: fadeAnim },
         ]}>
-          {screen === 'landing' && (
-            <LandingScreen onGetStarted={handleLandingGetStarted} />
-          )}
 
+
+          {screen === 'landing'    && <LandingScreen onGetStarted={() => navigateTo('auth')} />}
+          {screen === 'auth'       && <AuthScreen onAuthSuccess={handleAuthSuccess} onContinueAsGuest={handleContinueAsGuest} />}
+          {screen === 'auth_profile_setup' && (
+            <AuthScreen
+              onAuthSuccess={async () => {
+                const session = await getSession();
+                if (session?.user) {
+                  const profile = await getProfile(session.user.id);
+                  setUserProfile(profile);
+                }
+                navigateTo('onboarding');
+              }}
+              onContinueAsGuest={handleContinueAsGuest}
+              startAtProfile={true}
+              userId={user?.id}
+            />
+          )}
           {screen === 'onboarding' && <OnboardingScreen onDone={handleOnboardingDone} />}
 
           {screen === 'home' && (
@@ -374,6 +503,7 @@ export default function App() {
               maxRerolls={MAX_REROLLS_PER_SESSION}
               vibe={lastAnswers?.vibe || lastAnswers?.mood || null}
               isDetailView={false}
+              isSurprise={lastAnswers?._surpriseMode || false}
             />
           )}
 
@@ -389,7 +519,17 @@ export default function App() {
             />
           )}
 
-          {screen === 'profile' && <ProfileScreen onBack={handleBackFromProfile} streak={streak} />}
+          {screen === 'profile' && <ProfileScreen onBack={handleBackFromProfile} streak={streak} onSignOut={handleSignOut} userProfile={userProfile} onEdit={() => navigateTo('edit_profile')} />}
+          {screen === 'edit_profile' && (
+            <EditProfileScreen
+              onBack={() => navigateTo('profile')}
+              userProfile={userProfile}
+              onSave={(updated) => {
+                setUserProfile(updated);
+                navigateTo('profile');
+              }}
+            />
+          )}
 
           {screen === 'history' && (
             <HistoryScreen
