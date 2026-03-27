@@ -385,8 +385,11 @@ if (typeof window !== 'undefined') {
   };
 
   const handleBack = () => {
-    navigateTo('home', () => { setResult(null); setError(null); setCoverArt(null); });
-  };
+  navigateTo('home', () => {
+    setResult(null); setError(null); setCoverArt(null);
+    getStreak().then(setStreak);
+  });
+};
 
   // MilestoneCelebrationScreen calls this with an action string to navigate
   // to the right reward screen after the celebration
