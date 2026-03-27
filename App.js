@@ -210,7 +210,8 @@ if (typeof window !== 'undefined') {
       setUserProfile(profile);
     }
     setIsGuest(false);
-    navigateTo('onboarding');
+    const onboarded = await AsyncStorage.getItem('kore_onboarded');
+    navigateTo(onboarded ? 'home' : 'onboarding');
   };
 
   const handleContinueAsGuest = async () => {
