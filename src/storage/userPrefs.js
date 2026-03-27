@@ -55,6 +55,8 @@ export function clearPrefsCache() {
 
 export function setActiveUser(userId) {
   _activeUserId = userId || null;
+  _prefsCache = null;
+  _prefsCacheTime = 0;
 }
 
 export function clearActiveUser() {

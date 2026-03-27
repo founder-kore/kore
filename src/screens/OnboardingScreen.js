@@ -300,7 +300,7 @@ export default function OnboardingScreen({ onDone }) {
                   }}
                   activeOpacity={0.75}
                 >
-                  <View style={[styles.milestoneDaysBadge, { backgroundColor: colors.ink }]}>
+                  <View style={[styles.milestoneDaysBadge, { backgroundColor: '#E8630A' }]}>
                     <Text style={styles.milestoneDaysText}>{m.days}d</Text>
                   </View>
                   <Text style={styles.milestoneIcon}>{m.icon}</Text>
