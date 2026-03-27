@@ -8,7 +8,7 @@ import {
 import { useState, useRef, useEffect } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../constants/theme';
-import { signIn, signUp, checkUsernameAvailable, createProfile, supabase, getGoogleAvatarUrl } from '../services/supabase';
+import { signIn, signUp, checkUsernameAvailable, createProfile, updateProfile, supabase, getGoogleAvatarUrl } from '../services/supabase';
 
 const AVATAR_COLORS = [
   '#E8630A', '#7F77DD', '#1D9E75', '#D4537E',
