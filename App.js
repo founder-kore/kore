@@ -114,16 +114,29 @@ export default function App() {
 
   useEffect(() => {
     async function init() {
-     // await AsyncStorage.clear();
-      const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
-      setIsDark(savedDarkMode === 'true');
+  // await AsyncStorage.clear();
+  const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
+  setIsDark(savedDarkMode === 'true');
 
-      const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
+  // Handle PKCE OAuth callback — exchange code for session if present in URL
+  if (typeof window !== 'undefined') {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    if (code) {
+      try {
+        await supabase.auth.exchangeCodeForSession(code);
+        // Clean the URL so the code isn't reused on next load
+        window.history.replaceState({}, '', window.location.pathname);
+      } catch (e) {
+        console.log('OAuth code exchange failed:', e);
+      }
+    }
+  }
 
-try {
-        const guestMode = await AsyncStorage.getItem('kore_guest_mode');
-        // Give Supabase time to process OAuth callback hash from URL
-await new Promise(res => setTimeout(res, 500));
+  const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));
+
+  try {
+    const guestMode = await AsyncStorage.getItem('kore_guest_mode');
 
 const sessionResult = await Promise.race([getSession(), timeout]);
 
