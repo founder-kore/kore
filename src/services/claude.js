@@ -150,18 +150,14 @@ export function getStreamingSearchUrl(platform, title) {
   return null;
 }
 
-const API_URL = process.env.EXPO_PUBLIC_USE_PROXY === 'true'
-  ? '/api/claude'
-  : 'https://api.anthropic.com/v1/messages';
+// Always use the Vercel proxy — never call Anthropic directly from the client.
+// The proxy verifies the shared secret before forwarding to Anthropic.
+const API_URL = '/api/claude';
 
-const HEADERS = process.env.EXPO_PUBLIC_USE_PROXY === 'true'
-  ? { 'Content-Type': 'application/json' }
-  : {
-      'Content-Type': 'application/json',
-      'x-api-key': process.env.EXPO_PUBLIC_ANTHROPIC_KEY,
-      'anthropic-version': '2023-06-01',
-      'anthropic-dangerous-direct-browser-access': 'true',
-    };
+const HEADERS = {
+  'Content-Type': 'application/json',
+  'x-kore-secret': process.env.EXPO_PUBLIC_KORE_SECRET,
+};
 
 // Core API call — parses JSON response, strips any stray markdown fences
 async function callClaude(systemPrompt, userMessage, maxTokens = 1000) {

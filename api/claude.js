@@ -1,7 +1,16 @@
 export default async function handler(req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  // Restrict to your own domain only
+  const origin = req.headers.origin || '';
+  const allowedOrigins = [
+    'https://kore-theapp.vercel.app',
+    'http://localhost:8081',
+    'http://localhost:19006',
+  ];
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-kore-secret');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
@@ -11,6 +20,12 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
+  // Verify shared secret — rejects anyone who isn't the Kore app
+  const secret = req.headers['x-kore-secret'];
+  if (!secret || secret !== process.env.KORE_API_SECRET) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
   if (!process.env.ANTHROPIC_KEY) {
     return res.status(500).json({ error: 'Missing API key' });
   }
@@ -18,7 +33,6 @@ export default async function handler(req, res) {
   try {
     let body = req.body;
 
-    // Handle all possible body formats
     if (!body) {
       return res.status(400).json({ error: 'Empty request body' });
     }
