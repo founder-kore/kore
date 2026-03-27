@@ -50,8 +50,23 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest, startAtPr
     setLoading(true); setError('');
     try {
       const data = await signUp(email.trim(), password);
-      setUserId(data.user?.id);
-      switchMode('profile');
+
+// Wait for Supabase to confirm the session before proceeding
+// Without this, the user ID doesn't exist in auth.users yet
+let confirmedId = data.user?.id;
+if (!confirmedId) {
+  // Try getting the session directly
+  const { data: sessionData } = await supabase.auth.getSession();
+  confirmedId = sessionData?.session?.user?.id;
+}
+
+if (!confirmedId) {
+  setError('Sign up failed — please try again.');
+  return;
+}
+
+setUserId(confirmedId);
+switchMode('profile');
     } catch (e) {
       setError(e.message?.includes('already') ? 'This email is already registered. Sign in instead.' : (e.message || 'Sign up failed.'));
     } finally { setLoading(false); }
