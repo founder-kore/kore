@@ -101,6 +101,7 @@ export default function App() {
   const [rerollCoolingDown, setRerollCoolingDown] = useState(false);
   const rerollTimerRef = useRef(null);
   const fadeAnim = useRef(new Animated.Value(1)).current;
+  const authHandledRef = useRef(false);
 
   useEffect(() => {
     async function init() {
@@ -126,17 +127,17 @@ export default function App() {
           const profile = await getProfile(sessionResult.user.id);
           if (profile) setUserProfile(profile);
           getStreak().then(setStreak);
-          setScreen('home');
+          if (!authHandledRef.current) setScreen('home');
         } else if (guestMode === 'true') {
           setIsGuest(true);
           const onboarded = await AsyncStorage.getItem(ONBOARDED_KEY);
-          setScreen(onboarded ? 'home' : 'onboarding');
+          if (!authHandledRef.current) setScreen(onboarded ? 'home' : 'onboarding');
         } else {
-          setScreen('landing');
+          if (!authHandledRef.current) setScreen('landing');
         }
       } catch (e) {
         console.log('Init error:', e);
-        setScreen('landing');
+        if (!authHandledRef.current) setScreen('landing');
       }
 
       getWatchedList().then(setWatchedList);
@@ -162,25 +163,25 @@ export default function App() {
         }
 
         if (profile) {
-  const googleAvatar = session.user.user_metadata?.avatar_url;
-  if (googleAvatar && !profile.avatar_url) {
-    await updateProfile(session.user.id, { avatar_url: googleAvatar });
-    profile = { ...profile, avatar_url: googleAvatar };
-  }
-  setUserProfile(profile);
-  // Only route to home if profile is complete (has username)
-  // Otherwise go to profile setup to fill in the details
-  if (profile.username) {
-    setScreen('home');
-  } else {
-    setScreen('auth_profile_setup');
-  }
+          const googleAvatar = session.user.user_metadata?.avatar_url;
+          if (googleAvatar && !profile.avatar_url) {
+            await updateProfile(session.user.id, { avatar_url: googleAvatar });
+            profile = { ...profile, avatar_url: googleAvatar };
+          }
+          setUserProfile(profile);
+          authHandledRef.current = true;
+          if (profile.username) {
+            setScreen('home');
+          } else {
+            setScreen('auth_profile_setup');
+          }
           setTimeout(() => {
             getStreak().then(setStreak);
             getWatchedList().then(setWatchedList);
             getFavoriteGenres().then(setFavoriteGenres);
           }, 300);
         } else {
+          authHandledRef.current = true;
           setScreen('auth_profile_setup');
         }
       } else if (event === 'SIGNED_OUT') {
@@ -444,7 +445,9 @@ export default function App() {
     }
   };
 
-  if (!screen) return null;
+  if (!screen) return (
+    <View style={{ flex: 1, backgroundColor: themeColors.bg }} />
+  );
 
   return (
     <ThemeContext.Provider value={{ colors: themeColors, isDark, toggleDarkMode: handleToggleDarkMode }}>
