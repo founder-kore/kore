@@ -286,8 +286,11 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                       </View>
                     )}
                     {memberSince && (
-                      <View style={styles.sincePill}>
-                        <Text style={styles.sinceText}>🌸 {memberSince}</Text>
+                      <View style={[styles.sincePill, {
+                        backgroundColor: isDark ? '#1A1A2E' : '#EEEDFE',
+                        borderColor: isDark ? '#2E2E50' : '#AFA9EC',
+                      }]}>
+                        <Text style={[styles.sinceText, { color: isDark ? '#7F77DD' : '#534AB7' }]}>🌸 {memberSince}</Text>
                       </View>
                     )}
                   </View>
@@ -301,12 +304,15 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
           {/* ── Next milestone progress ── */}
           {!isGuest && nextMilestone && (
-            <View style={styles.milestoneCard}>
+            <View style={[styles.milestoneCard, {
+              backgroundColor: isDark ? '#1A1208' : '#FFF5E6',
+              borderColor: isDark ? '#4A3010' : '#F5D9B0',
+            }]}>
               <Text style={styles.milestoneLabel}>NEXT MILESTONE · {nextMilestone.days} DAYS</Text>
               <View style={styles.milestoneBarBg}>
                 <View style={[styles.milestoneBarFill, { width: `${milestoneProgress}%` }]} />
               </View>
-              <Text style={[styles.milestoneSub, { color: colors.charcoal }]}>
+              <Text style={[styles.milestoneSub, { color: isDark ? '#666' : '#A07040' }]}>
                 {streakLocal} of {nextMilestone.days} days · Unlock {nextMilestone.label} at day {nextMilestone.days}
               </Text>
             </View>
@@ -333,7 +339,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleDarkMode(!isDark); }}
               activeOpacity={0.7}
             >
-              <View style={[styles.rowIcon, { backgroundColor: '#2A2A2A' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: isDark ? '#2A2A2A' : '#F0EFED' }]}>
                 <Text style={styles.rowIconText}>🌙</Text>
               </View>
               <View style={{ flex: 1 }}>
@@ -359,7 +365,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               onPress={handleToggleGenres}
               activeOpacity={0.7}
             >
-              <View style={[styles.rowIcon, { backgroundColor: '#1A2A1A' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: isDark ? '#1A2A1A' : '#E8F5EE' }]}>
                 <Text style={styles.rowIconText}>🎭</Text>
               </View>
               <View style={{ flex: 1 }}>
@@ -453,7 +459,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               onPress={() => { if (eraRowUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
               activeOpacity={eraRowUnlocked ? 0.7 : 1}
             >
-              <View style={[styles.rowIcon, { backgroundColor: '#1A1A2A' }]}>
+              <View style={[styles.rowIcon, { backgroundColor: isDark ? '#1A1A2A' : '#EEEDFE' }]}>
                 <Text style={styles.rowIconText}>📅</Text>
               </View>
               <View style={{ flex: 1 }}>
@@ -467,8 +473,8 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               {eraRowUnlocked ? (
                 <Text style={[styles.menuArrow, { color: colors.charcoal }]}>›</Text>
               ) : (
-                <View style={styles.lockedPill}>
-                  <Text style={styles.lockedPillText}>🔒 Locked</Text>
+                <View style={[styles.lockedPill, { backgroundColor: isDark ? '#252525' : '#EBEBEB' }]}>
+                  <Text style={[styles.lockedPillText, { color: isDark ? '#555' : '#888' }]}>🔒 Locked</Text>
                 </View>
               )}
             </TouchableOpacity>
@@ -525,7 +531,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                   onPress={notifEnabled ? handleDisableNotif : handleEnableNotif}
                   activeOpacity={0.7}
                 >
-                  <View style={[styles.rowIcon, { backgroundColor: '#2A1A1A' }]}>
+                  <View style={[styles.rowIcon, { backgroundColor: isDark ? '#2A1A1A' : '#FAEEE6' }]}>
                     <Text style={styles.rowIconText}>🔔</Text>
                   </View>
                   <View style={{ flex: 1 }}>
@@ -604,17 +610,17 @@ const styles = StyleSheet.create({
   editLabel:    { fontSize: 13, fontWeight: '500' },
   streakPill:   { alignSelf: 'flex-start', backgroundColor: '#E8630A18', borderWidth: 0.5, borderColor: '#E8630A40', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   streakText:   { fontSize: 11, color: '#E8630A', fontWeight: '500' },
-  sincePill:    { alignSelf: 'flex-start', backgroundColor: '#1A1A2E', borderWidth: 0.5, borderColor: '#2E2E50', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-  sinceText:    { fontSize: 11, color: '#7F77DD', fontWeight: '500' },
-  milestoneCard:  { borderRadius: 14, borderWidth: 0.5, borderColor: '#4A3010', backgroundColor: '#1A1208', padding: 14, marginBottom: 16 },
+  sincePill:    { alignSelf: 'flex-start', borderWidth: 0.5, borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  sinceText:    { fontSize: 11, fontWeight: '500' },
+  milestoneCard:  { borderRadius: 14, borderWidth: 0.5, padding: 14, marginBottom: 16 },
   milestoneLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.8, color: '#E8630A', marginBottom: 8 },
   milestoneBarBg: { height: 5, borderRadius: 3, backgroundColor: '#2A1F0F', marginBottom: 8 },
   milestoneBarFill: { height: 5, borderRadius: 3, backgroundColor: '#E8630A' },
   milestoneSub:   { fontSize: 11 },
   rowIcon:      { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   rowIconText:  { fontSize: 14 },
-  lockedPill:   { backgroundColor: '#2A2A2A', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
-  lockedPillText: { fontSize: 11, color: '#888', fontWeight: '500' },
+  lockedPill:   { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  lockedPillText: { fontSize: 11, fontWeight: '500' },
   createAccountBtn: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
   createAccountText:{ fontSize: 13, color: '#fff', fontWeight: '500' },
 
