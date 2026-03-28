@@ -110,7 +110,7 @@ export default function App() {
 
       // Clean up any OAuth params from URL without processing them
       // Supabase handles the session automatically via detectSessionInUrl
-      if (typeof window !== 'undefined' && window.location.search) {
+      if (typeof window !== 'undefined' && typeof window.history !== 'undefined' && window.location?.search) {
         window.history.replaceState({}, '', window.location.pathname);
       }
 
@@ -244,7 +244,7 @@ export default function App() {
       } catch {}
     };
 
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('offline', handleOffline);
       window.addEventListener('online',  handleOnline);
     }
@@ -255,7 +255,7 @@ export default function App() {
     return () => {
       if (rerollTimerRef.current) clearTimeout(rerollTimerRef.current);
       subscription?.unsubscribe();
-      if (typeof window !== 'undefined') {
+      if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
         window.removeEventListener('offline', handleOffline);
         window.removeEventListener('online',  handleOnline);
       }
