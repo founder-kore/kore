@@ -2,8 +2,8 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://bresisicgwgzpsdprehp.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_7HLITkd5Lm2jiY7F1AW-FQ_LHpNHOMl';
+const SUPABASE_URL = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const SUPABASE_KEY = process.env.EXPO_PUBLIC_SUPABASE_KEY;
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform } from 'react-native';
@@ -158,7 +158,7 @@ export async function getCloudHistory(userId) {
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
     .limit(50);
-  if (error) return [];
+  if (error || !data) return [];
   return data.map(row => row.data);
 }
 
@@ -184,7 +184,7 @@ export async function getCloudRatings(userId) {
     .from('ratings')
     .select('*')
     .eq('user_id', userId);
-  if (error) return [];
+  if (error || !data) return [];
   return data.map(row => ({ title: row.title, rating: row.rating }));
 }
 
@@ -212,7 +212,7 @@ export async function getCloudWatchLater(userId) {
     .select('*')
     .eq('user_id', userId)
     .order('created_at', { ascending: false });
-  if (error) return [];
+  if (error || !data) return [];
   return data.map(row => row.data);
 }
 

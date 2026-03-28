@@ -88,22 +88,21 @@ export function getNextMilestone(streak) {
 // ─── HISTORY ─────────────────────────────────────────────────────────────────
 
 export async function getHistory() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.HISTORY);
-    const local = raw ? JSON.parse(raw) : [];
+  const raw = await AsyncStorage.getItem(KEYS.HISTORY).catch(() => null);
+  const local = raw ? JSON.parse(raw) : [];
 
-    if (_activeUserId) {
+  if (_activeUserId) {
+    try {
       const cloud = await getCloudHistory(_activeUserId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
-        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
         const seen = new Set(local.map(h => h.title));
         const merged = [...local, ...cloud.filter(c => !seen.has(c.title))];
         return merged.slice(0, 200);
       }
-    }
-    return local;
-  } catch { return []; }
+    } catch {}
+  }
+  return local;
 }
 
 export async function addToHistory(entry) {
@@ -157,21 +156,20 @@ export async function removeFromWatchedList(title) {
 // ─── RATINGS ─────────────────────────────────────────────────────────────────
 
 export async function getRatings() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
-    const local = raw ? JSON.parse(raw) : [];
+  const raw = await AsyncStorage.getItem(KEYS.RATINGS).catch(() => null);
+  const local = raw ? JSON.parse(raw) : [];
 
-    if (_activeUserId) {
+  if (_activeUserId) {
+    try {
       const cloud = await getCloudRatings(_activeUserId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
-        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
         const seen = new Set(local.map(r => r.title));
         return [...local, ...cloud.filter(c => !seen.has(c.title))];
       }
-    }
-    return local;
-  } catch { return []; }
+    } catch {}
+  }
+  return local;
 }
 
 export async function saveRating(title, rating) {
@@ -218,21 +216,20 @@ export async function getRatingSummary() {
 // ─── WATCH LATER ─────────────────────────────────────────────────────────────
 
 export async function getWatchLater() {
-  try {
-    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
-    const local = raw ? JSON.parse(raw) : [];
+  const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER).catch(() => null);
+  const local = raw ? JSON.parse(raw) : [];
 
-    if (_activeUserId) {
+  if (_activeUserId) {
+    try {
       const cloud = await getCloudWatchLater(_activeUserId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
-        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
         const seen = new Set(local.map(i => i.title));
         return [...local, ...cloud.filter(c => !seen.has(c.title))];
       }
-    }
-    return local;
-  } catch { return []; }
+    } catch {}
+  }
+  return local;
 }
 
 export async function addToWatchLater(entry) {
