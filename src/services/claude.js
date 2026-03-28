@@ -152,7 +152,9 @@ export function getStreamingSearchUrl(platform, title) {
 
 // Always use the Vercel proxy — never call Anthropic directly from the client.
 // The proxy verifies the shared secret before forwarding to Anthropic.
-const API_URL = '/api/claude';
+const API_URL = typeof window !== 'undefined' && typeof window.location !== 'undefined'
+  ? '/api/claude'
+  : 'https://kore-theapp.vercel.app/api/claude';
 
 const HEADERS = {
   'Content-Type': 'application/json',
