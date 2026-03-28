@@ -309,7 +309,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               borderColor: isDark ? '#4A3010' : '#F5D9B0',
             }]}>
               <Text style={styles.milestoneLabel}>NEXT MILESTONE · {nextMilestone.days} DAYS</Text>
-              <View style={styles.milestoneBarBg}>
+              <View style={[styles.milestoneBarBg, { backgroundColor: isDark ? '#2A1F0F' : '#F5D9B0' }]}>
                 <View style={[styles.milestoneBarFill, { width: `${milestoneProgress}%` }]} />
               </View>
               <Text style={[styles.milestoneSub, { color: isDark ? '#666' : '#A07040' }]}>
@@ -614,7 +614,7 @@ const styles = StyleSheet.create({
   sinceText:    { fontSize: 11, fontWeight: '500' },
   milestoneCard:  { borderRadius: 14, borderWidth: 0.5, padding: 14, marginBottom: 16 },
   milestoneLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.8, color: '#E8630A', marginBottom: 8 },
-  milestoneBarBg: { height: 5, borderRadius: 3, backgroundColor: '#2A1F0F', marginBottom: 8 },
+  milestoneBarBg: { height: 5, borderRadius: 3, marginBottom: 8 },
   milestoneBarFill: { height: 5, borderRadius: 3, backgroundColor: '#E8630A' },
   milestoneSub:   { fontSize: 11 },
   rowIcon:      { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
