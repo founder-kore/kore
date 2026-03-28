@@ -6,8 +6,10 @@ export default async function handler(req, res) {
     'http://localhost:8081',
     'http://localhost:19006',
   ];
-  if (allowedOrigins.includes(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
+  // Allow requests with no origin (native mobile apps don't send Origin header)
+  // Web browser requests are still restricted to allowedOrigins
+  if (!origin || allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin || '*');
   }
   res.setHeader('Access-Control-Allow-Methods', 'POST,OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type,x-kore-secret');
