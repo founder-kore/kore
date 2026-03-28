@@ -322,7 +322,7 @@ export default function ResultScreen({
       const url = key && WEB_SEARCH_URLS[key]
         ? WEB_SEARCH_URLS[key](result?.title || '')
         : getStreamingSearchUrl(platform, result?.title || '');
-      if (url) Linking.openURL(url);
+      if (url) window.open(url, '_blank', 'noopener,noreferrer');
       return;
     }
     setStreamingPlatform(platform);

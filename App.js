@@ -192,15 +192,10 @@ export default function App() {
           setScreen('auth_profile_setup');
         }
       } else if (event === 'SIGNED_OUT') {
-        // Only treat as real sign-out if there's no active session
-        // (guards against spurious SIGNED_OUT during token refresh)
-        const currentSession = await getSession().catch(() => null);
-        if (!currentSession) {
-          clearActiveUser();
-          setUser(null);
-          setUserProfile(null);
-          setStreak(0);
-        }
+        // Intentional sign-out is handled by handleSignOut() directly.
+        // Ignoring this event here prevents spurious SIGNED_OUT events
+        // (fired by Supabase during token refresh when the tab regains
+        // visibility) from clearing state mid-session.
       }
     });
 
