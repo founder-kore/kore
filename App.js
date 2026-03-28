@@ -168,7 +168,7 @@ export default function App() {
             profile = { ...profile, avatar_url: googleAvatar };
           }
           setUserProfile(profile);
-          setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
+          setScreen('home');
           setTimeout(() => {
             getStreak().then(setStreak);
             getWatchedList().then(setWatchedList);
