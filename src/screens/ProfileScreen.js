@@ -37,6 +37,13 @@ const ERA_LABELS = {
   '00s': '2000s', '10s': '2010s', '20s': '2020s',
 };
 
+const MILESTONE_STEPS = [
+  { days: 7,  label: 'Mood Insights' },
+  { days: 14, label: 'Hidden Gem mode' },
+  { days: 30, label: 'Kore Score' },
+  { days: 60, label: 'Era Lock' },
+];
+
 function ToggleRow({ label, sub, value, onToggle, colors, borderC, last }) {
   return (
     <TouchableOpacity
@@ -66,7 +73,7 @@ function SectionBlock({ label, children, colors, cardBg, borderC }) {
   );
 }
 
-export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfile: propProfile, onEdit }) {
+export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfile: propProfile, onEdit, onOpenEraLock }) {
   const { colors, isDark, toggleDarkMode } = useTheme();
 
   const [favoriteGenres,  setFavoriteGenres]  = useState([]);
@@ -207,6 +214,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
   const hiddenGemUnlocked = isUnlocked('hidden_gem',    streakLocal);
   const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal);
+  const eraRowUnlocked    = streakLocal >= 60;
   const whyNowBg = isDark ? '#2A1A00' : '#FFF5EE';
   const cardBg   = isDark ? '#1A1A1A' : colors.snow;
   const borderC  = isDark ? '#2A2A2A' : colors.border;
@@ -219,11 +227,20 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     ? (userProfile.display_name || userProfile.username || '?').slice(0, 2).toUpperCase()
     : '?';
 
+  const memberSince = userProfile?.created_at
+    ? new Date(userProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+    : null;
+
+  const nextMilestone = MILESTONE_STEPS.find(m => streakLocal < m.days) || null;
+  const milestoneProgress = nextMilestone
+    ? Math.min(100, Math.round((streakLocal / nextMilestone.days) * 100))
+    : 100;
+
   const filteredGenres = (genres) =>
     genreSearch ? genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())) : genres;
 
   // Whether this is the last item in the Recommendations section
-  const recsHasMore = hiddenGemUnlocked || eraLockUnlocked;
+  const recsHasMore = hiddenGemUnlocked || eraLockUnlocked || true; // era row always present
 
   return (
     <View style={{ flex: 1 }}>
@@ -262,16 +279,36 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                 <View style={{ flex: 1 }}>
                   <Text style={[styles.profileName, { color: colors.ink }]}>{userProfile.display_name || userProfile.username}</Text>
                   <Text style={[styles.profileUsername, { color: colors.charcoal }]}>@{userProfile.username}</Text>
-                  {streakLocal > 0 && (
-                    <View style={styles.streakPill}>
-                      <Text style={styles.streakText}>🔥 {streakLocal} day streak</Text>
-                    </View>
-                  )}
+                  <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
+                    {streakLocal > 0 && (
+                      <View style={styles.streakPill}>
+                        <Text style={styles.streakText}>🔥 {streakLocal} day streak</Text>
+                      </View>
+                    )}
+                    {memberSince && (
+                      <View style={styles.sincePill}>
+                        <Text style={styles.sinceText}>🌸 {memberSince}</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
                 <TouchableOpacity onPress={onEdit} activeOpacity={0.7}>
                   <Text style={[styles.editLabel, { color: colors.ember }]}>Edit</Text>
                 </TouchableOpacity>
               </View>
+            </View>
+          )}
+
+          {/* ── Next milestone progress ── */}
+          {!isGuest && nextMilestone && (
+            <View style={styles.milestoneCard}>
+              <Text style={styles.milestoneLabel}>NEXT MILESTONE · {nextMilestone.days} DAYS</Text>
+              <View style={styles.milestoneBarBg}>
+                <View style={[styles.milestoneBarFill, { width: `${milestoneProgress}%` }]} />
+              </View>
+              <Text style={[styles.milestoneSub, { color: colors.charcoal }]}>
+                {streakLocal} of {nextMilestone.days} days · Unlock {nextMilestone.label} at day {nextMilestone.days}
+              </Text>
             </View>
           )}
 
@@ -291,13 +328,22 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
           {/* ── APPEARANCE ── */}
           <SectionBlock label="APPEARANCE" colors={colors} cardBg={cardBg} borderC={borderC}>
-            <ToggleRow
-              label="Dark mode"
-              sub={isDark ? 'Currently on' : 'Currently off'}
-              value={isDark}
-              onToggle={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleDarkMode(!isDark); }}
-              colors={colors} borderC={borderC} last
-            />
+            <TouchableOpacity
+              style={[styles.menuRow, { borderBottomColor: borderC, borderBottomWidth: 0 }]}
+              onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); toggleDarkMode(!isDark); }}
+              activeOpacity={0.7}
+            >
+              <View style={[styles.rowIcon, { backgroundColor: '#2A2A2A' }]}>
+                <Text style={styles.rowIconText}>🌙</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuLabel, { color: colors.ink }]}>Dark mode</Text>
+                <Text style={[styles.menuSub, { color: colors.charcoal }]}>{isDark ? 'Currently on' : 'Currently off'}</Text>
+              </View>
+              <View style={[styles.toggleTrack, { backgroundColor: isDark ? colors.ember : colors.border }]}>
+                <View style={[styles.toggleThumb, { transform: [{ translateX: isDark ? 18 : 2 }] }]} />
+              </View>
+            </TouchableOpacity>
           </SectionBlock>
 
           {/* ── RECOMMENDATIONS ── */}
@@ -309,11 +355,13 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                 styles.menuRow,
                 { borderBottomColor: borderC },
                 genresOpen && { backgroundColor: isDark ? '#222' : '#fafafa' },
-                !recsHasMore && !genresOpen && { borderBottomWidth: 0 },
               ]}
               onPress={handleToggleGenres}
               activeOpacity={0.7}
             >
+              <View style={[styles.rowIcon, { backgroundColor: '#1A2A1A' }]}>
+                <Text style={styles.rowIconText}>🎭</Text>
+              </View>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.menuLabel, { color: colors.ink }]}>Favourite genres</Text>
                 <Text style={[styles.menuSub, { color: colors.charcoal }]}>{genrePreview}</Text>
@@ -399,6 +447,32 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               </View>
             )}
 
+            {/* Era preference row */}
+            <TouchableOpacity
+              style={[styles.menuRow, { borderBottomColor: borderC }, !hiddenGemUnlocked && !eraLockUnlocked && { borderBottomWidth: 0 }, !eraRowUnlocked && { opacity: 0.4 }]}
+              onPress={() => { if (eraRowUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
+              activeOpacity={eraRowUnlocked ? 0.7 : 1}
+            >
+              <View style={[styles.rowIcon, { backgroundColor: '#1A1A2A' }]}>
+                <Text style={styles.rowIconText}>📅</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={[styles.menuLabel, { color: colors.ink }]}>Era preference</Text>
+                <Text style={[styles.menuSub, { color: colors.charcoal }]}>
+                  {eraRowUnlocked
+                    ? (eraLock ? `Active: ${ERA_LABELS[eraLock] || eraLock}` : 'Any era')
+                    : 'Unlocks at 60 day streak'}
+                </Text>
+              </View>
+              {eraRowUnlocked ? (
+                <Text style={[styles.menuArrow, { color: colors.charcoal }]}>›</Text>
+              ) : (
+                <View style={styles.lockedPill}>
+                  <Text style={styles.lockedPillText}>🔒 Locked</Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
             {hiddenGemUnlocked && (
               <ToggleRow
                 label="Hidden Gem mode"
@@ -446,14 +520,24 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               </View>
             ) : (
               <>
-                <ToggleRow
-                  label="Streak reminder"
-                  sub={notifEnabled ? `Daily at ${notifTimeLabel}` : 'Get a nudge to keep your streak alive'}
-                  value={notifEnabled}
-                  onToggle={notifEnabled ? handleDisableNotif : handleEnableNotif}
-                  colors={colors} borderC={borderC}
-                  last={!notifEnabled}
-                />
+                <TouchableOpacity
+                  style={[styles.menuRow, { borderBottomColor: borderC }, !notifEnabled && { borderBottomWidth: 0 }]}
+                  onPress={notifEnabled ? handleDisableNotif : handleEnableNotif}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: '#2A1A1A' }]}>
+                    <Text style={styles.rowIconText}>🔔</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[styles.menuLabel, { color: colors.ink }]}>Streak reminder</Text>
+                    <Text style={[styles.menuSub, { color: colors.charcoal }]}>
+                      {notifEnabled ? `Daily at ${notifTimeLabel}` : 'Get a nudge to keep your streak alive'}
+                    </Text>
+                  </View>
+                  <View style={[styles.toggleTrack, { backgroundColor: notifEnabled ? colors.ember : colors.border }]}>
+                    <View style={[styles.toggleThumb, { transform: [{ translateX: notifEnabled ? 18 : 2 }] }]} />
+                  </View>
+                </TouchableOpacity>
                 {notifEnabled && (
                   <View style={styles.timeSlotsWrap}>
                     <Text style={[styles.timeSlotsLabel, { color: colors.charcoal }]}>Remind me at</Text>
@@ -518,8 +602,19 @@ const styles = StyleSheet.create({
   profileName:  { fontSize: 16, fontWeight: '500', marginBottom: 2 },
   profileUsername: { fontSize: 13 },
   editLabel:    { fontSize: 13, fontWeight: '500' },
-  streakPill:   { marginTop: 6, alignSelf: 'flex-start', backgroundColor: '#E8630A18', borderWidth: 0.5, borderColor: '#E8630A40', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  streakPill:   { alignSelf: 'flex-start', backgroundColor: '#E8630A18', borderWidth: 0.5, borderColor: '#E8630A40', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   streakText:   { fontSize: 11, color: '#E8630A', fontWeight: '500' },
+  sincePill:    { alignSelf: 'flex-start', backgroundColor: '#1A1A2E', borderWidth: 0.5, borderColor: '#2E2E50', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  sinceText:    { fontSize: 11, color: '#7F77DD', fontWeight: '500' },
+  milestoneCard:  { borderRadius: 14, borderWidth: 0.5, borderColor: '#4A3010', backgroundColor: '#1A1208', padding: 14, marginBottom: 16 },
+  milestoneLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.8, color: '#E8630A', marginBottom: 8 },
+  milestoneBarBg: { height: 5, borderRadius: 3, backgroundColor: '#2A1F0F', marginBottom: 8 },
+  milestoneBarFill: { height: 5, borderRadius: 3, backgroundColor: '#E8630A' },
+  milestoneSub:   { fontSize: 11 },
+  rowIcon:      { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  rowIconText:  { fontSize: 14 },
+  lockedPill:   { backgroundColor: '#2A2A2A', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
+  lockedPillText: { fontSize: 11, color: '#888', fontWeight: '500' },
   createAccountBtn: { padding: 12, borderRadius: 10, alignItems: 'center', marginTop: 10 },
   createAccountText:{ fontSize: 13, color: '#fff', fontWeight: '500' },
 

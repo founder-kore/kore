@@ -581,6 +581,7 @@ export default function App() {
               onSignOut={handleSignOut}
               userProfile={userProfile}
               onEdit={() => navigateTo('edit_profile')}
+              onOpenEraLock={() => navigateTo('era_lock')}
             />
           )}
           {screen === 'edit_profile' && (
