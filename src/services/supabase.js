@@ -87,7 +87,6 @@ export async function uploadAvatar(userId, fileUri, fileType = 'image/jpeg') {
   const response = await fetch(fileUri);
   const blob = await response.blob();
   const ext = fileType.includes('png') ? 'png' : 'jpg';
-  // Path must be userId/avatar.ext so RLS policy can match on folder name
   const path = `${userId}/avatar.${ext}`;
 
   const { error: uploadError } = await supabase.storage
@@ -96,7 +95,6 @@ export async function uploadAvatar(userId, fileUri, fileType = 'image/jpeg') {
 
   if (uploadError) throw uploadError;
 
-  // Add cache-busting timestamp so updated avatars reload immediately
   const { data } = supabase.storage.from('avatars').getPublicUrl(path);
   return `${data.publicUrl}?t=${Date.now()}`;
 }
@@ -112,7 +110,44 @@ export async function checkUsernameAvailable(username) {
     .select('username')
     .eq('username', username.toLowerCase().trim())
     .single();
-  return !data; // true = available
+  return !data;
+}
+
+// ─── PREFERENCES ──────────────────────────────────────────────────────────────
+
+export async function createPreferences(userId) {
+  // upsert with ignoreDuplicates — safe to call multiple times
+  const { error } = await supabase
+    .from('preferences')
+    .upsert({
+      user_id: userId,
+      streak: 0,
+      last_used: null,
+      favorite_genres: [],
+      milestones_seen: [],
+      era_lock: null,
+      directors_cut: false,
+      mix_hidden_gems: false,
+    }, { onConflict: 'user_id', ignoreDuplicates: true });
+  if (error) console.log('Preferences create error:', error);
+}
+
+export async function getCloudPreferences(userId) {
+  const { data, error } = await supabase
+    .from('preferences')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+  if (error) return null;
+  return data;
+}
+
+export async function updateCloudPreferences(userId, updates) {
+  const { error } = await supabase
+    .from('preferences')
+    .update(updates)
+    .eq('user_id', userId);
+  if (error) throw error;
 }
 
 // ─── HISTORY ──────────────────────────────────────────────────────────────────
@@ -204,42 +239,4 @@ export async function clearCloudWatchLater(userId) {
     .delete()
     .eq('user_id', userId);
   if (error) throw error;
-}
-
-// ─── PREFERENCES ──────────────────────────────────────────────────────────────
-
-export async function getCloudPreferences(userId) {
-  const { data, error } = await supabase
-    .from('preferences')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-  if (error) return null;
-  return data;
-}
-
-export async function updateCloudPreferences(userId, updates) {
-  const { error } = await supabase
-    .from('preferences')
-    .update(updates)
-    .eq('user_id', userId);
-  if (error) throw error;
-}
-
-export async function createPreferences(userId) {
-  const { error } = await supabase
-    .from('preferences')
-    .insert({
-      user_id: userId,
-      streak: 0,
-      last_used: null,
-      favorite_genres: [],
-      milestones_seen: [],
-      era_lock: null,
-      directors_cut: false,
-      mix_hidden_gems: false,
-    })
-    .onConflict('user_id')
-    .ignore();
-  if (error) console.log('Preferences create error:', error);
 }

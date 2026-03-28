@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, View, Animated, Image } from 'react-native';
+import { StyleSheet, View, Animated, Image, Text } from 'react-native';
 import * as Notifications from 'expo-notifications';
 import HomeScreen from './src/screens/HomeScreen';
 import ResultScreen from './src/screens/ResultScreen';
@@ -78,32 +78,25 @@ export default function App() {
   const [isDark, setIsDark] = useState(false);
   const themeColors = isDark ? darkColors : lightColors;
 
-  const loadUserProfile = async (userId) => {
-    try {
-      const profile = await getProfile(userId);
-      setUserProfile(profile);
-    } catch {}
-  };
-
-  const [screen, setScreen] = useState(null);
-  const [user, setUser]     = useState(null);
-  const [isGuest, setIsGuest] = useState(false);
+  const [screen, setScreen]           = useState(null);
+  const [user, setUser]               = useState(null);
+  const [isGuest, setIsGuest]         = useState(false);
   const [userProfile, setUserProfile] = useState(null);
-  const [result, setResult] = useState(null);
-  const [coverArt, setCoverArt] = useState(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
+  const [result, setResult]           = useState(null);
+  const [coverArt, setCoverArt]       = useState(null);
+  const [loading, setLoading]         = useState(false);
+  const [error, setError]             = useState(null);
   const [watchedList, setWatchedList] = useState([]);
   const [favoriteGenres, setFavoriteGenres] = useState([]);
   const [lastAnswers, setLastAnswers] = useState(null);
-  const [streak, setStreak] = useState(0);
-  const [pendingMilestone, setPendingMilestone] = useState(null);
+  const [streak, setStreak]           = useState(0);
+  const [pendingMilestone, setPendingMilestone]             = useState(null);
   const [pendingMilestoneAction, setPendingMilestoneAction] = useState(null);
-  const [previousScreen, setPreviousScreen] = useState(null);
-  const [sessionRecommended, setSessionRecommended] = useState([]);
-  const [affiliateRewardType, setAffiliateRewardType] = useState(null);
-  const [isOffline, setIsOffline] = useState(false);
-  const [resultKey, setResultKey] = useState(0);
+  const [previousScreen, setPreviousScreen]                 = useState(null);
+  const [sessionRecommended, setSessionRecommended]         = useState([]);
+  const [affiliateRewardType, setAffiliateRewardType]       = useState(null);
+  const [isOffline, setIsOffline]     = useState(false);
+  const [resultKey, setResultKey]     = useState(0);
   const [rerollCount, setRerollCount] = useState(0);
   const [rerollCoolingDown, setRerollCoolingDown] = useState(false);
   const rerollTimerRef = useRef(null);
@@ -138,7 +131,8 @@ export default function App() {
           setUser(sessionResult.user);
           setIsGuest(false);
           setActiveUser(sessionResult.user.id);
-          loadUserProfile(sessionResult.user.id);
+          const profile = await getProfile(sessionResult.user.id);
+          if (profile) setUserProfile(profile);
           getStreak().then(setStreak);
           setScreen('home');
         } else if (guestMode === 'true') {
@@ -155,7 +149,6 @@ export default function App() {
 
       getWatchedList().then(setWatchedList);
       getFavoriteGenres().then(setFavoriteGenres);
-      getStreak().then(setStreak);
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
@@ -164,6 +157,9 @@ export default function App() {
         setIsGuest(false);
         setActiveUser(session.user.id);
         await AsyncStorage.removeItem('kore_guest_mode');
+
+        // Ensure preferences row exists
+        await createPreferences(session.user.id);
 
         let profile = await getProfile(session.user.id);
 
@@ -174,14 +170,12 @@ export default function App() {
         }
 
         if (profile) {
-          await createPreferences(session.user.id);
           const googleAvatar = session.user.user_metadata?.avatar_url;
           if (googleAvatar && !profile.avatar_url) {
             await updateProfile(session.user.id, { avatar_url: googleAvatar });
-            setUserProfile({ ...profile, avatar_url: googleAvatar });
-          } else {
-            setUserProfile(profile);
+            profile = { ...profile, avatar_url: googleAvatar };
           }
+          setUserProfile(profile);
           setScreen(prev => (prev === 'auth' || prev === 'landing' || prev === null) ? 'home' : prev);
           setTimeout(() => {
             getStreak().then(setStreak);
@@ -195,6 +189,7 @@ export default function App() {
         clearActiveUser();
         setUser(null);
         setUserProfile(null);
+        setStreak(0);
       }
     });
 
@@ -233,9 +228,10 @@ export default function App() {
       setUser(session.user);
       setActiveUser(session.user.id);
       const profile = await getProfile(session.user.id);
-      setUserProfile(profile);
+      if (profile) setUserProfile(profile);
     }
     setIsGuest(false);
+    setStreak(0);
     const onboarded = await AsyncStorage.getItem('kore_onboarded');
     navigateTo(onboarded ? 'home' : 'onboarding');
   };
@@ -254,6 +250,7 @@ export default function App() {
     setUser(null);
     setUserProfile(null);
     setIsGuest(false);
+    setStreak(0);
     await AsyncStorage.multiRemove([
       'kore_guest_mode',
       'kore_watched_list', 'kore_history', 'kore_ratings',
@@ -472,8 +469,9 @@ export default function App() {
                 const session = await getSession();
                 if (session?.user) {
                   const profile = await getProfile(session.user.id);
-                  setUserProfile(profile);
+                  if (profile) setUserProfile(profile);
                 }
+                setStreak(0);
                 navigateTo('onboarding');
               }}
               onContinueAsGuest={handleContinueAsGuest}
