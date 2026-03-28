@@ -27,22 +27,44 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   const [avatarUrl,     setAvatarUrl]     = useState(userProfile?.avatar_url || null);
   const [localImageUri, setLocalImageUri] = useState(null);
 
-  const [usernameState, setUsernameState] = useState('idle'); // 'idle'|'checking'|'available'|'taken'|'same'
+  const [usernameState, setUsernameState] = useState('idle');
   const [saving,        setSaving]        = useState(false);
   const [error,         setError]         = useState('');
 
-  const usernameTimer = useRef(null);
+  const usernameTimer  = useRef(null);
+  const fileInputRef   = useRef(null); // web file input ref
   const originalUsername = userProfile?.username || '';
 
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : colors.border;
-  const inputBg = isDark ? '#242424' : '#F5F4F2';
 
   // Auto-load Google avatar if no avatar set yet
   useEffect(() => {
     if (!avatarUrl) {
       getGoogleAvatarUrl().then(url => { if (url) setAvatarUrl(url); });
     }
+  }, []);
+
+  // Inject hidden file input on web
+  useEffect(() => {
+    if (Platform.OS !== 'web') return;
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      setLocalImageUri(url);
+      // Store the actual File object for upload
+      fileInputRef._file = file;
+    });
+    document.body.appendChild(input);
+    fileInputRef.current = input;
+    return () => {
+      document.body.removeChild(input);
+    };
   }, []);
 
   // Real-time username check
@@ -63,11 +85,18 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   }, [username]);
 
   const handlePickImage = async () => {
+    if (Platform.OS === 'web') {
+      // On web, trigger the hidden file input
+      if (fileInputRef.current) fileInputRef.current.click();
+      return;
+    }
+
+    // On native, use expo-image-picker
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { setError('Camera roll permission needed'); return; }
 
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images, // ← was MediaTypeOptions.Images (deprecated)
+      mediaTypes: ImagePicker.MediaType.Images,
       allowsEditing: true,
       aspect: [1, 1],
       quality: 0.8,
@@ -98,10 +127,33 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
 
       // Upload new photo if picked
       if (localImageUri) {
-        const ext = localImageUri.split('.').pop()?.toLowerCase() || 'jpg';
-        const mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-        const url = await uploadAvatar(user.id, localImageUri, mime);
-        updates.avatar_url = url;
+        let mime = 'image/jpeg';
+        let fileUri = localImageUri;
+
+        if (Platform.OS === 'web' && fileInputRef._file) {
+          // Web: upload the File object directly
+          const file = fileInputRef._file;
+          mime = file.type || 'image/jpeg';
+          const ext = mime.includes('png') ? 'png' : 'jpg';
+          const path = `${user.id}/avatar.${ext}`;
+
+          const { createClient } = await import('@supabase/supabase-js');
+          const { supabase } = await import('../services/supabase');
+          const { error: uploadError } = await supabase.storage
+            .from('avatars')
+            .upload(path, file, { upsert: true, contentType: mime });
+
+          if (uploadError) throw uploadError;
+
+          const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+          updates.avatar_url = `${data.publicUrl}?t=${Date.now()}`;
+        } else {
+          // Native: use existing uploadAvatar function
+          const ext = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
+          mime = ext === 'png' ? 'image/png' : 'image/jpeg';
+          const url = await uploadAvatar(user.id, fileUri, mime);
+          updates.avatar_url = url;
+        }
       }
 
       await updateProfile(user.id, updates);
@@ -117,12 +169,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
     : (username || '?').slice(0, 2).toUpperCase();
 
   const displayImage = localImageUri || avatarUrl;
-
-  const usernameInputBorder = () => {
-    if (usernameState === 'available') return '#1D9E75';
-    if (usernameState === 'taken') return '#E24B4A';
-    return borderC;
-  };
 
   const UsernameHint = () => {
     if (usernameState === 'checking') return <Text style={[styles.hint, { color: colors.charcoal }]}>Checking...</Text>;
@@ -160,7 +206,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
         <View style={[styles.card, { backgroundColor: cardBg, borderColor: borderC }]}>
           <View style={styles.avatarCenter}>
 
-            {/* Avatar preview */}
             <TouchableOpacity style={styles.avatarWrap} onPress={handlePickImage} activeOpacity={0.8}>
               {displayImage ? (
                 <Image source={{ uri: displayImage }} style={styles.avatarImg} />
@@ -178,7 +223,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
               <Text style={[styles.changePhotoBtn, { color: colors.ember }]}>Change photo</Text>
             </TouchableOpacity>
 
-            {/* Subtle color row */}
             <View style={styles.colorRow}>
               <Text style={[styles.colorLabel, { color: colors.charcoal }]}>Fallback colour</Text>
               <View style={styles.colorDots}>
@@ -205,7 +249,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
         {/* ── Fields ── */}
         <View style={[styles.card, { backgroundColor: cardBg, borderColor: borderC, paddingHorizontal: 0, paddingVertical: 0, overflow: 'hidden' }]}>
 
-          {/* Display name */}
           <View style={[styles.fieldRow, { borderBottomColor: borderC }]}>
             <Text style={[styles.fieldLabel, { color: colors.charcoal }]}>DISPLAY NAME</Text>
             <TextInput
@@ -217,7 +260,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
             />
           </View>
 
-          {/* Username */}
           <View style={[styles.fieldRow, { borderBottomWidth: 0 }]}>
             <Text style={[styles.fieldLabel, { color: colors.charcoal }]}>USERNAME</Text>
             <TextInput
@@ -237,7 +279,6 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
           <Text style={styles.errorText}>{error}</Text>
         ) : null}
 
-        {/* Save button */}
         <TouchableOpacity
           style={[styles.saveBtn, { backgroundColor: isDark ? '#E8630A' : colors.ink },
             (saving || usernameState === 'taken') && { opacity: 0.5 }]}
@@ -265,9 +306,7 @@ const styles = StyleSheet.create({
   headerTitle:  { fontSize: 16, fontWeight: '500', textAlign: 'center' },
   headerSave:   { fontSize: 14, fontWeight: '500', textAlign: 'right' },
   scroll:       { padding: 16, paddingTop: 14 },
-
   card:         { borderRadius: 16, borderWidth: 0.5, padding: 16, marginBottom: 12 },
-
   avatarCenter: { alignItems: 'center', gap: 10 },
   avatarWrap:   { position: 'relative' },
   avatar:       { width: 80, height: 80, borderRadius: 40, alignItems: 'center', justifyContent: 'center' },
@@ -276,20 +315,16 @@ const styles = StyleSheet.create({
   editDot:      { position: 'absolute', bottom: 0, right: 0, width: 24, height: 24, borderRadius: 12, backgroundColor: '#E8630A', alignItems: 'center', justifyContent: 'center', borderWidth: 2.5 },
   editIcon:     { fontSize: 11, color: '#fff' },
   changePhotoBtn:{ fontSize: 13, fontWeight: '500' },
-
   colorRow:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%', marginTop: 4 },
   colorLabel:   { fontSize: 11 },
   colorDots:    { flexDirection: 'row', gap: 8 },
   colorDot:     { width: 20, height: 20, borderRadius: 10 },
   colorDotActive:{ borderWidth: 2.5, transform: [{ scale: 1.15 }] },
-
   fieldRow:     { paddingHorizontal: 14, paddingTop: 12, paddingBottom: 10, borderBottomWidth: 0.5 },
   fieldLabel:   { fontSize: 10, letterSpacing: 0.5, marginBottom: 4 },
   fieldInput:   { fontSize: 15, paddingVertical: 2 },
   hint:         { fontSize: 11, marginTop: 4 },
-
   errorText:    { fontSize: 12, color: '#CC3333', textAlign: 'center', marginBottom: 8 },
-
   saveBtn:      { padding: 16, borderRadius: 14, alignItems: 'center', marginBottom: 8 },
   saveBtnText:  { fontSize: 15, fontWeight: '500', color: '#fff' },
 });
