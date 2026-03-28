@@ -107,18 +107,10 @@ export default function App() {
       const savedDarkMode = await AsyncStorage.getItem(DARK_MODE_KEY);
       setIsDark(savedDarkMode === 'true');
 
-      // Handle PKCE OAuth callback — exchange code for session if present in URL
-      if (typeof window !== 'undefined') {
-        const params = new URLSearchParams(window.location.search);
-        const code = params.get('code');
-        if (code) {
-          try {
-            await supabase.auth.exchangeCodeForSession(code);
-            window.history.replaceState({}, '', window.location.pathname);
-          } catch (e) {
-            console.log('OAuth code exchange failed:', e);
-          }
-        }
+      // Clean up any OAuth params from URL without processing them
+      // Supabase handles the session automatically via detectSessionInUrl
+      if (typeof window !== 'undefined' && window.location.search) {
+        window.history.replaceState({}, '', window.location.pathname);
       }
 
       const timeout = new Promise(resolve => setTimeout(() => resolve('timeout'), 10000));

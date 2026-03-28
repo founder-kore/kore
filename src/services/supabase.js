@@ -19,7 +19,6 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: true,
-    flowType: 'pkce',
     storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
     lock: (_name, _acquireTimeout, fn) => fn(),
   },
