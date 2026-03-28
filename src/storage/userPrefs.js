@@ -89,12 +89,20 @@ export function getNextMilestone(streak) {
 
 export async function getHistory() {
   try {
+    const raw = await AsyncStorage.getItem(KEYS.HISTORY);
+    const local = raw ? JSON.parse(raw) : [];
+
     if (_activeUserId) {
       const cloud = await getCloudHistory(_activeUserId);
-      if (cloud && cloud.length > 0) return cloud;
+      if (cloud && cloud.length > 0) {
+        if (local.length === 0) return cloud;
+        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
+        const seen = new Set(local.map(h => h.title));
+        const merged = [...local, ...cloud.filter(c => !seen.has(c.title))];
+        return merged.slice(0, 200);
+      }
     }
-    const raw = await AsyncStorage.getItem(KEYS.HISTORY);
-    return raw ? JSON.parse(raw) : [];
+    return local;
   } catch { return []; }
 }
 
@@ -150,12 +158,19 @@ export async function removeFromWatchedList(title) {
 
 export async function getRatings() {
   try {
+    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
+    const local = raw ? JSON.parse(raw) : [];
+
     if (_activeUserId) {
       const cloud = await getCloudRatings(_activeUserId);
-      if (cloud && cloud.length > 0) return cloud;
+      if (cloud && cloud.length > 0) {
+        if (local.length === 0) return cloud;
+        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
+        const seen = new Set(local.map(r => r.title));
+        return [...local, ...cloud.filter(c => !seen.has(c.title))];
+      }
     }
-    const raw = await AsyncStorage.getItem(KEYS.RATINGS);
-    return raw ? JSON.parse(raw) : [];
+    return local;
   } catch { return []; }
 }
 
@@ -204,12 +219,19 @@ export async function getRatingSummary() {
 
 export async function getWatchLater() {
   try {
+    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
+    const local = raw ? JSON.parse(raw) : [];
+
     if (_activeUserId) {
       const cloud = await getCloudWatchLater(_activeUserId);
-      if (cloud && cloud.length > 0) return cloud;
+      if (cloud && cloud.length > 0) {
+        if (local.length === 0) return cloud;
+        // Merge: local first (includes any not-yet-synced writes), then cloud items not in local
+        const seen = new Set(local.map(i => i.title));
+        return [...local, ...cloud.filter(c => !seen.has(c.title))];
+      }
     }
-    const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER);
-    return raw ? JSON.parse(raw) : [];
+    return local;
   } catch { return []; }
 }
 
