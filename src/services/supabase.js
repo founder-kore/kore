@@ -20,12 +20,7 @@ export const supabase = createClient(SUPABASE_URL, SUPABASE_KEY, {
     persistSession: true,
     detectSessionInUrl: true,
     storage: Platform.OS === 'web' ? webStorage : AsyncStorage,
-    lock: (name, _acquireTimeout, fn) => {
-      if (typeof navigator !== 'undefined' && navigator.locks) {
-        return navigator.locks.request(name, fn);
-      }
-      return fn();
-    },
+    lock: (_name, _acquireTimeout, fn) => fn(),
   },
 });
 
