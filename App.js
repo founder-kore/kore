@@ -162,13 +162,19 @@ export default function App() {
         }
 
         if (profile) {
-          const googleAvatar = session.user.user_metadata?.avatar_url;
-          if (googleAvatar && !profile.avatar_url) {
-            await updateProfile(session.user.id, { avatar_url: googleAvatar });
-            profile = { ...profile, avatar_url: googleAvatar };
-          }
-          setUserProfile(profile);
-          setScreen('home');
+  const googleAvatar = session.user.user_metadata?.avatar_url;
+  if (googleAvatar && !profile.avatar_url) {
+    await updateProfile(session.user.id, { avatar_url: googleAvatar });
+    profile = { ...profile, avatar_url: googleAvatar };
+  }
+  setUserProfile(profile);
+  // Only route to home if profile is complete (has username)
+  // Otherwise go to profile setup to fill in the details
+  if (profile.username) {
+    setScreen('home');
+  } else {
+    setScreen('auth_profile_setup');
+  }
           setTimeout(() => {
             getStreak().then(setStreak);
             getWatchedList().then(setWatchedList);
