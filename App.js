@@ -145,25 +145,42 @@ export default function App() {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'TOKEN_REFRESHED' && session?.user) {
-        // Silently keep the active user in sync — do NOT navigate
-        setUser(session.user);
-        setActiveUser(session.user.id);
+      // INITIAL_SESSION fires on every page load — just restore active user silently
+      if (event === 'INITIAL_SESSION') {
+        if (session?.user) {
+          setUser(session.user);
+          setActiveUser(session.user.id);
+        }
+        return;
+      }
+
+      // TOKEN_REFRESHED fires when returning to tab or on background refresh — never navigate
+      if (event === 'TOKEN_REFRESHED') {
+        if (session?.user) {
+          setUser(session.user);
+          setActiveUser(session.user.id);
+        }
         return;
       }
 
       if (event === 'SIGNED_IN' && session?.user) {
+        // If already navigated and in the app, just silently keep active user in sync.
+        // Supabase can re-fire SIGNED_IN when returning to the tab — we must NOT navigate.
+        if (authHandledRef.current) {
+          setUser(session.user);
+          setActiveUser(session.user.id);
+          return;
+        }
+
         setUser(session.user);
         setIsGuest(false);
         setActiveUser(session.user.id);
         await AsyncStorage.removeItem('kore_guest_mode');
 
-        // Ensure preferences row exists
         await createPreferences(session.user.id);
 
         let profile = await getProfile(session.user.id);
 
-        // Retry once — trigger may still be creating the profile row
         if (!profile) {
           await new Promise(res => setTimeout(res, 1500));
           profile = await getProfile(session.user.id);
@@ -191,21 +208,36 @@ export default function App() {
           authHandledRef.current = true;
           setScreen('auth_profile_setup');
         }
-      } else if (event === 'SIGNED_OUT') {
-        // Intentional sign-out is handled by handleSignOut() directly.
-        // Ignoring this event here prevents spurious SIGNED_OUT events
-        // (fired by Supabase during token refresh when the tab regains
-        // visibility) from clearing state mid-session.
       }
+      // SIGNED_OUT: intentional sign-out is handled by handleSignOut() directly.
+      // Ignoring the event here prevents spurious SIGNED_OUT during token refresh
+      // from clearing active state mid-session.
     });
 
     init();
 
     const handleOffline = () => setIsOffline(true);
     const handleOnline  = () => setIsOffline(false);
+
+    // When the tab regains visibility (e.g. returning from a streaming site),
+    // re-validate the session and restore _activeUserId if it was cleared.
+    const handleVisibilityChange = async () => {
+      if (typeof document === 'undefined' || document.visibilityState !== 'visible') return;
+      try {
+        const currentSession = await getSession();
+        if (currentSession?.user) {
+          setActiveUser(currentSession.user.id);
+          setUser(currentSession.user);
+        }
+      } catch {}
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('offline', handleOffline);
       window.addEventListener('online',  handleOnline);
+    }
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', handleVisibilityChange);
     }
 
     return () => {
@@ -214,6 +246,9 @@ export default function App() {
       if (typeof window !== 'undefined') {
         window.removeEventListener('offline', handleOffline);
         window.removeEventListener('online',  handleOnline);
+      }
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', handleVisibilityChange);
       }
     };
   }, []);
