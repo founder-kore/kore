@@ -127,17 +127,29 @@ export default function App() {
           const profile = await getProfile(sessionResult.user.id);
           if (profile) setUserProfile(profile);
           getStreak().then(setStreak);
-          if (!authHandledRef.current) setScreen('home');
+          if (!authHandledRef.current) {
+            authHandledRef.current = true;
+            setScreen('home');
+          }
         } else if (guestMode === 'true') {
           setIsGuest(true);
           const onboarded = await AsyncStorage.getItem(ONBOARDED_KEY);
-          if (!authHandledRef.current) setScreen(onboarded ? 'home' : 'onboarding');
+          if (!authHandledRef.current) {
+            authHandledRef.current = true;
+            setScreen(onboarded ? 'home' : 'onboarding');
+          }
         } else {
-          if (!authHandledRef.current) setScreen('landing');
+          if (!authHandledRef.current) {
+            authHandledRef.current = true;
+            setScreen('landing');
+          }
         }
       } catch (e) {
         console.log('Init error:', e);
-        if (!authHandledRef.current) setScreen('landing');
+        if (!authHandledRef.current) {
+          authHandledRef.current = true;
+          setScreen('landing');
+        }
       }
 
       getWatchedList().then(setWatchedList);
