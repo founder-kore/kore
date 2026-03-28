@@ -17,7 +17,23 @@ import {
 import { signOut, getCurrentUser, getProfile } from '../services/supabase';
 
 const NOTIF_HOUR_KEY    = 'kore_notif_hour';
+const NOTIF_MINUTE_KEY  = 'kore_notif_minute';
 const NOTIF_ENABLED_KEY = 'kore_notif_enabled';
+
+const NOTIF_MESSAGES = [
+  { title: 'コレ', body: 'Your streak is waiting. What are you watching tonight?' },
+  { title: 'コレ', body: "Don't break the streak. One anime, one question." },
+  { title: 'コレ', body: "Tonight's pick is waiting for you." },
+  { title: 'コレ', body: "Keep it going. What's the vibe tonight?" },
+];
+
+const TIME_PRESETS = [
+  { label: '9am',  h: 9,  m: 0 },
+  { label: '12pm', h: 12, m: 0 },
+  { label: '6pm',  h: 18, m: 0 },
+  { label: '8pm',  h: 20, m: 0 },
+  { label: '10pm', h: 22, m: 0 },
+];
 
 const ALL_GENRES = [
   { category: 'Core',           genres: ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller'] },
@@ -25,12 +41,6 @@ const ALL_GENRES = [
   { category: 'Tone',           genres: ['Dark', 'Feel-good', 'Mind-bending', 'Wholesome', 'Gritty', 'Philosophical'] },
 ];
 
-const TIME_SLOTS = [
-  { label: 'Morning',   sub: '9:00 AM',  hour: 9  },
-  { label: 'Afternoon', sub: '2:00 PM',  hour: 14 },
-  { label: 'Evening',   sub: '7:00 PM',  hour: 19 },
-  { label: 'Night',     sub: '10:00 PM', hour: 22 },
-];
 
 const ERA_LABELS = {
   '70s': '1970s', '80s': '1980s', '90s': '1990s',
@@ -83,7 +93,8 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const [saved,           setSaved]           = useState(false);
   const [notifEnabled,    setNotifEnabled]    = useState(false);
   const [notifPermission, setNotifPermission] = useState('undetermined');
-  const [notifHour,       setNotifHour]       = useState(19);
+  const [notifHour,       setNotifHour]       = useState(20);
+  const [notifMinute,     setNotifMinute]     = useState(0);
   const [mixGems,         setMixGemsLocal]    = useState(false);
   const [eraLock,         setEraLockLocal]    = useState(null);
   const [streakLocal,     setStreakLocal]      = useState(streak);
@@ -120,12 +131,18 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
       }
 
       const savedHour    = await AsyncStorage.getItem(NOTIF_HOUR_KEY);
+      const savedMinute  = await AsyncStorage.getItem(NOTIF_MINUTE_KEY);
       const savedEnabled = await AsyncStorage.getItem(NOTIF_ENABLED_KEY);
-      if (savedHour) setNotifHour(parseInt(savedHour));
+      if (savedHour)   setNotifHour(parseInt(savedHour));
+      if (savedMinute) setNotifMinute(parseInt(savedMinute));
       if (savedEnabled === 'true') {
-        const { status } = await Notifications.getPermissionsAsync();
-        setNotifPermission(status);
-        setNotifEnabled(status === 'granted');
+        if (Platform.OS !== 'web') {
+          const { status } = await Notifications.getPermissionsAsync();
+          setNotifPermission(status);
+          setNotifEnabled(status === 'granted');
+        } else {
+          setNotifEnabled(true);
+        }
       }
     } catch (e) { console.log('ProfileScreen loadData error:', e); }
   };
@@ -148,7 +165,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
   const removeGenre = (genre) => { setFavoriteGenres(prev => prev.filter(g => g !== genre)); setSaved(false); };
 
-  const scheduleNotif = async (hour) => {
+  const scheduleStreakReminder = async (hour, minute) => {
     try {
       await Notifications.cancelAllScheduledNotificationsAsync();
       if (Platform.OS === 'android') {
@@ -156,39 +173,46 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
           name: 'Streak Reminders', importance: Notifications.AndroidImportance.DEFAULT,
         });
       }
+      const msg = NOTIF_MESSAGES[Math.floor(Math.random() * NOTIF_MESSAGES.length)];
       await Notifications.scheduleNotificationAsync({
         content: {
-          title: 'コレ — Your daily pick is waiting 🌸',
-          body: "Keep your streak alive. What's your vibe tonight?",
+          title: msg.title,
+          body: msg.body,
+          sound: true,
           ...(Platform.OS === 'android' ? { channelId: 'kore-streak' } : {}),
         },
-        trigger: { type: 'daily', hour, minute: 0 },
+        trigger: { hour, minute, repeats: true },
       });
     } catch (e) { console.log('Could not schedule notification:', e); }
   };
 
-  const handleEnableNotif = async () => {
-    const { status } = await Notifications.requestPermissionsAsync();
-    setNotifPermission(status);
-    if (status === 'granted') {
-      setNotifEnabled(true);
+  const handleToggleNotif = async (value) => {
+    if (Platform.OS === 'web') {
+      setNotifEnabled(value);
+      await AsyncStorage.setItem(NOTIF_ENABLED_KEY, String(value));
+      return;
+    }
+    if (value) {
+      const { status } = await Notifications.requestPermissionsAsync();
+      setNotifPermission(status);
+      if (status !== 'granted') return;
+      await scheduleStreakReminder(notifHour, notifMinute);
       await AsyncStorage.setItem(NOTIF_ENABLED_KEY, 'true');
-      await scheduleNotif(notifHour);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    } else { setNotifPermission('denied'); }
+    } else {
+      await Notifications.cancelAllScheduledNotificationsAsync();
+      await AsyncStorage.setItem(NOTIF_ENABLED_KEY, 'false');
+    }
+    setNotifEnabled(value);
   };
 
-  const handleDisableNotif = async () => {
-    setNotifEnabled(false);
-    await AsyncStorage.setItem(NOTIF_ENABLED_KEY, 'false');
-    await Notifications.cancelAllScheduledNotificationsAsync();
-  };
-
-  const handleSetNotifHour = async (hour) => {
+  const handleTimeChange = async (hour, minute) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setNotifHour(hour);
+    setNotifMinute(minute);
     await AsyncStorage.setItem(NOTIF_HOUR_KEY, String(hour));
-    if (notifEnabled) await scheduleNotif(hour);
+    await AsyncStorage.setItem(NOTIF_MINUTE_KEY, String(minute));
+    if (notifEnabled) await scheduleStreakReminder(hour, minute);
   };
 
   const handleMixToggle = async (value) => {
@@ -215,11 +239,8 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const hiddenGemUnlocked = isUnlocked('hidden_gem',    streakLocal);
   const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal);
   const eraRowUnlocked    = streakLocal >= 60;
-  const whyNowBg = isDark ? '#2A1A00' : '#FFF5EE';
-  const cardBg   = isDark ? '#1A1A1A' : colors.snow;
-  const borderC  = isDark ? '#2A2A2A' : colors.border;
-
-  const notifTimeLabel = TIME_SLOTS.find(s => s.hour === notifHour)?.sub || '7:00 PM';
+  const cardBg  = isDark ? '#1A1A1A' : colors.snow;
+  const borderC = isDark ? '#2A2A2A' : colors.border;
   const genrePreview   = favoriteGenres.length > 0
     ? favoriteGenres.slice(0, 3).join(' · ') + (favoriteGenres.length > 3 ? ` +${favoriteGenres.length - 3}` : '')
     : 'None set';
@@ -528,7 +549,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               <>
                 <TouchableOpacity
                   style={[styles.menuRow, { borderBottomColor: borderC }, !notifEnabled && { borderBottomWidth: 0 }]}
-                  onPress={notifEnabled ? handleDisableNotif : handleEnableNotif}
+                  onPress={() => handleToggleNotif(!notifEnabled)}
                   activeOpacity={0.7}
                 >
                   <View style={[styles.rowIcon, { backgroundColor: isDark ? '#2A1A1A' : '#FAEEE6' }]}>
@@ -537,31 +558,65 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                   <View style={{ flex: 1 }}>
                     <Text style={[styles.menuLabel, { color: colors.ink }]}>Streak reminder</Text>
                     <Text style={[styles.menuSub, { color: colors.charcoal }]}>
-                      {notifEnabled ? `Daily at ${notifTimeLabel}` : 'Get a nudge to keep your streak alive'}
+                      {notifEnabled
+                        ? `Daily at ${String(notifHour % 12 || 12).padStart(2, '0')}:${String(notifMinute).padStart(2, '0')} ${notifHour >= 12 ? 'PM' : 'AM'}`
+                        : 'Get a nudge to keep your streak alive'}
                     </Text>
                   </View>
-                  <View style={[styles.toggleTrack, { backgroundColor: notifEnabled ? colors.ember : colors.border }]}>
+                  <View style={[styles.toggleTrack, { backgroundColor: notifEnabled ? colors.ember : (isDark ? '#333' : '#CCC') }]}>
                     <View style={[styles.toggleThumb, { transform: [{ translateX: notifEnabled ? 18 : 2 }] }]} />
                   </View>
                 </TouchableOpacity>
-                {notifEnabled && (
-                  <View style={styles.timeSlotsWrap}>
-                    <Text style={[styles.timeSlotsLabel, { color: colors.charcoal }]}>Remind me at</Text>
-                    <View style={styles.timeSlotsRow}>
-                      {TIME_SLOTS.map(slot => (
-                        <TouchableOpacity
-                          key={slot.hour}
-                          style={[styles.timeSlot, { borderColor: borderC, backgroundColor: isDark ? '#2A2A2A' : colors.chalk },
-                            notifHour === slot.hour && { borderColor: colors.ember, backgroundColor: whyNowBg }]}
-                          onPress={() => handleSetNotifHour(slot.hour)}
-                        >
-                          <Text style={[styles.timeSlotTitle, { color: colors.ink },
-                            notifHour === slot.hour && { color: colors.ember }]}>{slot.label}</Text>
-                          <Text style={[styles.timeSlotSub, { color: colors.charcoal },
-                            notifHour === slot.hour && { color: colors.ember }]}>{slot.sub}</Text>
-                        </TouchableOpacity>
-                      ))}
+
+                {notifEnabled && Platform.OS !== 'web' && (
+                  <View style={[styles.notifPanel, { backgroundColor: isDark ? '#191919' : '#F8F7F5', borderTopColor: borderC }]}>
+                    <Text style={[styles.notifPanelLabel, { color: colors.charcoal }]}>REMIND ME AT</Text>
+                    <View style={styles.notifPresetRow}>
+                      {TIME_PRESETS.map(p => {
+                        const active = notifHour === p.h && notifMinute === p.m;
+                        return (
+                          <TouchableOpacity
+                            key={p.label}
+                            style={[styles.notifPresetPill, {
+                              backgroundColor: active ? (isDark ? '#2A1F0F' : '#FFF0E0') : (isDark ? '#242424' : '#EFEFED'),
+                              borderColor: active ? (isDark ? '#4A3010' : '#F5D9B0') : borderC,
+                            }]}
+                            onPress={() => handleTimeChange(p.h, p.m)}
+                          >
+                            <Text style={[styles.notifPresetText, { color: active ? '#E8630A' : colors.charcoal }]}>{p.label}</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
                     </View>
+                    <View style={[styles.notifDivider, { backgroundColor: borderC }]} />
+                    <View style={styles.notifCustomRow}>
+                      <Text style={[styles.notifCustomLabel, { color: colors.charcoal }]}>Custom time</Text>
+                      <TextInput
+                        style={[styles.notifCustomInput, { color: colors.ink, borderColor: borderC, backgroundColor: isDark ? '#242424' : '#EFEFED' }]}
+                        value={`${String(notifHour).padStart(2, '0')}:${String(notifMinute).padStart(2, '0')}`}
+                        onChangeText={(val) => {
+                          const [h, m] = val.split(':').map(Number);
+                          if (!isNaN(h) && !isNaN(m) && h >= 0 && h <= 23 && m >= 0 && m <= 59) {
+                            handleTimeChange(h, m);
+                          }
+                        }}
+                        placeholder="HH:MM"
+                        placeholderTextColor={colors.charcoal}
+                        keyboardType="numbers-and-punctuation"
+                        maxLength={5}
+                      />
+                    </View>
+                  </View>
+                )}
+
+                {notifEnabled && Platform.OS === 'web' && (
+                  <View style={[styles.notifWebNote, {
+                    backgroundColor: isDark ? '#1A1A2E' : '#EEEDFE',
+                    borderColor: isDark ? '#2E2E50' : '#AFA9EC',
+                  }]}>
+                    <Text style={[styles.notifWebNoteText, { color: isDark ? '#7F77DD' : '#534AB7' }]}>
+                      Reminders are available in the Kore mobile app. Download it to get daily streak nudges.
+                    </Text>
                   </View>
                 )}
               </>
@@ -639,12 +694,17 @@ const styles = StyleSheet.create({
   disableBtn:   { paddingVertical: 5, paddingHorizontal: 12, borderRadius: 20, borderWidth: 0.5 },
   disableBtnText:{ fontSize: 12 },
 
-  timeSlotsWrap:  { paddingVertical: 10 },
-  timeSlotsLabel: { fontSize: 11, letterSpacing: 0.5, marginBottom: 8 },
-  timeSlotsRow:   { flexDirection: 'row', gap: 8 },
-  timeSlot:       { flex: 1, padding: 8, borderRadius: 10, borderWidth: 0.5, alignItems: 'center', gap: 2 },
-  timeSlotTitle:  { fontSize: 12, fontWeight: '500' },
-  timeSlotSub:    { fontSize: 10 },
+  notifPanel:       { marginHorizontal: -14, paddingHorizontal: 14, paddingVertical: 12, borderTopWidth: 0.5 },
+  notifPanelLabel:  { fontSize: 10, fontWeight: '500', letterSpacing: 0.8, marginBottom: 10 },
+  notifPresetRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  notifPresetPill:  { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, borderWidth: 0.5 },
+  notifPresetText:  { fontSize: 13, fontWeight: '500' },
+  notifDivider:     { height: 0.5, marginBottom: 12 },
+  notifCustomRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  notifCustomLabel: { fontSize: 13 },
+  notifCustomInput: { fontSize: 13, borderWidth: 0.5, borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6, minWidth: 70, textAlign: 'center' },
+  notifWebNote:     { marginTop: 8, borderRadius: 10, borderWidth: 0.5, paddingHorizontal: 14, paddingVertical: 10 },
+  notifWebNoteText: { fontSize: 11, lineHeight: 16 },
 
   // Inline genre picker (expanded inside the card)
   genresPicker: { paddingVertical: 12, paddingHorizontal: 2 },
