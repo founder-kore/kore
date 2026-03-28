@@ -145,7 +145,14 @@ export default function App() {
     }
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user) {
+      if (event === 'TOKEN_REFRESHED' && session?.user) {
+        // Silently keep the active user in sync — do NOT navigate
+        setUser(session.user);
+        setActiveUser(session.user.id);
+        return;
+      }
+
+      if (event === 'SIGNED_IN' && session?.user) {
         setUser(session.user);
         setIsGuest(false);
         setActiveUser(session.user.id);
@@ -185,10 +192,15 @@ export default function App() {
           setScreen('auth_profile_setup');
         }
       } else if (event === 'SIGNED_OUT') {
-        clearActiveUser();
-        setUser(null);
-        setUserProfile(null);
-        setStreak(0);
+        // Only treat as real sign-out if there's no active session
+        // (guards against spurious SIGNED_OUT during token refresh)
+        const currentSession = await getSession().catch(() => null);
+        if (!currentSession) {
+          clearActiveUser();
+          setUser(null);
+          setUserProfile(null);
+          setStreak(0);
+        }
       }
     });
 

@@ -12,6 +12,7 @@ import {
   getCloudWatchLater, addToCloudWatchLater,
   removeFromCloudWatchLater, clearCloudWatchLater,
   getCloudPreferences, updateCloudPreferences,
+  getCurrentUser,
 } from '../services/supabase';
 
 const KEYS = {
@@ -67,6 +68,20 @@ export function getActiveUserId() {
   return _activeUserId;
 }
 
+// Resolves the active user ID — falls back to checking the auth session if the
+// in-memory ID was cleared by a spurious SIGNED_OUT during token refresh.
+async function resolveUserId() {
+  if (_activeUserId) return _activeUserId;
+  try {
+    const user = await getCurrentUser();
+    if (user?.id) {
+      _activeUserId = user.id; // restore it
+      return user.id;
+    }
+  } catch {}
+  return null;
+}
+
 // ─── MILESTONES ──────────────────────────────────────────────────────────────
 
 export const MILESTONES = [
@@ -91,9 +106,10 @@ export async function getHistory() {
   const raw = await AsyncStorage.getItem(KEYS.HISTORY).catch(() => null);
   const local = raw ? JSON.parse(raw) : [];
 
-  if (_activeUserId) {
+  const userId = await resolveUserId();
+  if (userId) {
     try {
-      const cloud = await getCloudHistory(_activeUserId);
+      const cloud = await getCloudHistory(userId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
         const seen = new Set(local.map(h => h.title));
@@ -159,9 +175,10 @@ export async function getRatings() {
   const raw = await AsyncStorage.getItem(KEYS.RATINGS).catch(() => null);
   const local = raw ? JSON.parse(raw) : [];
 
-  if (_activeUserId) {
+  const userId = await resolveUserId();
+  if (userId) {
     try {
-      const cloud = await getCloudRatings(_activeUserId);
+      const cloud = await getCloudRatings(userId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
         const seen = new Set(local.map(r => r.title));
@@ -219,9 +236,10 @@ export async function getWatchLater() {
   const raw = await AsyncStorage.getItem(KEYS.WATCH_LATER).catch(() => null);
   const local = raw ? JSON.parse(raw) : [];
 
-  if (_activeUserId) {
+  const userId = await resolveUserId();
+  if (userId) {
     try {
-      const cloud = await getCloudWatchLater(_activeUserId);
+      const cloud = await getCloudWatchLater(userId);
       if (cloud && cloud.length > 0) {
         if (local.length === 0) return cloud;
         const seen = new Set(local.map(i => i.title));
