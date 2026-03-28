@@ -5,7 +5,7 @@ import {
 import { useState, useEffect, useRef } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../constants/theme';
-import { saveRating, addToWatchLater, isInWatchLater } from '../storage/userPrefs';
+import { saveRating, addToWatchLater, isInWatchLater, getRatings } from '../storage/userPrefs';
 import { getStreamingSearchUrl, getFillerGuide } from '../services/claude';
 
 const LOADING_MESSAGES = {
@@ -266,6 +266,13 @@ export default function ResultScreen({
     coverOpacity.setValue(0); bannerOpacity.setValue(0);
     if (result?.title) {
       isInWatchLater(result.title).then(setSavedLater);
+      getRatings().then(ratings => {
+        const existing = ratings.find(r => r.title === result.title);
+        if (existing) {
+          setUserRating(existing.rating);
+          setRatingConfirmed(true);
+        }
+      });
       if (result.episode_count >= 50) {
         getFillerGuide(result.title, result.episode_count)
           .then(info => { if (info) setFillerInfo(info); })
