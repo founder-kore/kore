@@ -103,7 +103,7 @@ export default function EraLockScreen({ onBack, onActivate }) {
     setCurrentEra(selectedEra);
     setSaved(true);
     setSaving(false);
-    // Stay on screen so user sees confirmation, then they can go back
+    if (onActivate) onActivate(selectedEra);
     setTimeout(() => setSaved(false), 2500);
   };
 
@@ -112,8 +112,7 @@ export default function EraLockScreen({ onBack, onActivate }) {
     await setEraLock(null);
     setCurrentEra(null);
     setSelectedEra(null);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+    if (onActivate) onActivate(null);
   };
 
   const isActive = currentEra !== null;

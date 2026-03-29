@@ -11,10 +11,10 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../constants/theme';
 import {
   getFavoriteGenres, saveFavoriteGenres,
-  getMixHiddenGems, setMixHiddenGems, getStreak, isUnlocked,
-  getEraLock, setEraLock, MILESTONES,
+  getStreak, isUnlocked,
+  getEraLock, MILESTONES,
 } from '../storage/userPrefs';
-import { signOut, getCurrentUser, getProfile } from '../services/supabase';
+import { signOut, getCurrentUser, getProfile, updateCloudPreferences } from '../services/supabase';
 
 const NOTIF_HOUR_KEY    = 'kore_notif_hour';
 const NOTIF_MINUTE_KEY  = 'kore_notif_minute';
@@ -49,28 +49,9 @@ const ERA_LABELS = {
 
 const MILESTONE_STEPS = [
   { days: 7,  label: 'Mood Insights' },
-  { days: 14, label: 'Hidden Gem mode' },
-  { days: 30, label: 'Kore Score' },
-  { days: 60, label: 'Era Lock' },
+  { days: 25, label: 'Kore Score' },
+  { days: 45, label: 'Era Lock' },
 ];
-
-function ToggleRow({ label, sub, value, onToggle, colors, borderC, last }) {
-  return (
-    <TouchableOpacity
-      style={[styles.menuRow, { borderBottomColor: borderC }, last && { borderBottomWidth: 0 }]}
-      onPress={onToggle}
-      activeOpacity={0.7}
-    >
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.menuLabel, { color: colors.ink }]}>{label}</Text>
-        {sub ? <Text style={[styles.menuSub, { color: colors.charcoal }]}>{sub}</Text> : null}
-      </View>
-      <View style={[styles.toggleTrack, { backgroundColor: value ? colors.ember : colors.border }]}>
-        <View style={[styles.toggleThumb, { transform: [{ translateX: value ? 18 : 2 }] }]} />
-      </View>
-    </TouchableOpacity>
-  );
-}
 
 function SectionBlock({ label, children, colors, cardBg, borderC }) {
   return (
@@ -95,11 +76,11 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const [notifPermission, setNotifPermission] = useState('undetermined');
   const [notifHour,       setNotifHour]       = useState(20);
   const [notifMinute,     setNotifMinute]     = useState(0);
-  const [mixGems,         setMixGemsLocal]    = useState(false);
   const [eraLock,         setEraLockLocal]    = useState(null);
   const [streakLocal,     setStreakLocal]      = useState(streak);
   const [userProfile,     setUserProfile]     = useState(propProfile || null);
   const [isGuest,         setIsGuest]         = useState(false);
+  const [debugStreak,     setDebugStreak]     = useState('');
 
   useEffect(() => {
     if (propProfile) setUserProfile(propProfile);
@@ -109,13 +90,12 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
 
   const loadData = async () => {
     try {
-      const [genres, mix, currentStreak, era] = await Promise.all([
-        getFavoriteGenres(), getMixHiddenGems(), getStreak(), getEraLock(),
+      const [genres, currentStreak, era] = await Promise.all([
+        getFavoriteGenres(), getStreak(), getEraLock(),
       ]);
       const guestMode = await AsyncStorage.getItem('kore_guest_mode');
       setIsGuest(guestMode === 'true');
       setFavoriteGenres(genres);
-      setMixGemsLocal(mix);
       setStreakLocal(currentStreak);
       setEraLockLocal(era);
 
@@ -215,16 +195,31 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     if (notifEnabled) await scheduleStreakReminder(hour, minute);
   };
 
-  const handleMixToggle = async (value) => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    setMixGemsLocal(value);
-    await setMixHiddenGems(value);
-  };
-
-  const handleDisableEraLock = async () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    await setEraLock(null);
+  const handleSetStreak = async () => {
+    const val = parseInt(debugStreak);
+    if (isNaN(val) || val < 0) return;
+    await Promise.all([
+      AsyncStorage.multiSet([
+        ['kore_streak', String(val)],
+        ['kore_last_used', new Date(Date.now() - 86400000).toDateString()],
+        ['kore_milestones_seen', JSON.stringify(MILESTONES.filter(m => val >= m.days).map(m => m.id))],
+      ]),
+      AsyncStorage.removeItem('kore_era_lock'),
+    ]);
+    const user = await getCurrentUser();
+    if (user) {
+      await updateCloudPreferences(user.id, {
+        streak: val,
+        last_used: new Date(Date.now() - 86400000).toDateString(),
+        milestones_seen: MILESTONES.filter(m => val >= m.days).map(m => m.id),
+      });
+    }
+    const { clearPrefsCache } = await import('../storage/userPrefs');
+    clearPrefsCache();
     setEraLockLocal(null);
+    await loadData();
+    alert(`Streak set to ${val}. Generate an anime to trigger the next milestone.`);
+    setDebugStreak('');
   };
 
   const handleToggleGenres = () => {
@@ -236,9 +231,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     }
   };
 
-  const hiddenGemUnlocked = isUnlocked('hidden_gem',    streakLocal);
-  const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal);
-  const eraRowUnlocked    = streakLocal >= 60;
+  const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal) || eraLock !== null;
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : colors.border;
   const genrePreview   = favoriteGenres.length > 0
@@ -261,7 +254,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     genreSearch ? genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())) : genres;
 
   // Whether this is the last item in the Recommendations section
-  const recsHasMore = hiddenGemUnlocked || eraLockUnlocked || true; // era row always present
+  const recsHasMore = eraLockUnlocked || true; // era row always present
 
   return (
     <View style={{ flex: 1 }}>
@@ -474,24 +467,24 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               </View>
             )}
 
-            {/* Era preference row */}
+            {/* Era Lock row */}
             <TouchableOpacity
-              style={[styles.menuRow, { borderBottomColor: borderC }, !hiddenGemUnlocked && !eraLockUnlocked && { borderBottomWidth: 0 }, !eraRowUnlocked && { opacity: 0.4 }]}
-              onPress={() => { if (eraRowUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
-              activeOpacity={eraRowUnlocked ? 0.7 : 1}
+              style={[styles.menuRow, { borderBottomWidth: 0 }, !eraLockUnlocked && { opacity: 0.4 }]}
+              onPress={() => { if (eraLockUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
+              activeOpacity={eraLockUnlocked ? 0.7 : 1}
             >
               <View style={[styles.rowIcon, { backgroundColor: isDark ? '#1A1A2A' : '#EEEDFE' }]}>
                 <Text style={styles.rowIconText}>📅</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={[styles.menuLabel, { color: colors.ink }]}>Era preference</Text>
+                <Text style={[styles.menuLabel, { color: colors.ink }]}>Era Lock</Text>
                 <Text style={[styles.menuSub, { color: colors.charcoal }]}>
-                  {eraRowUnlocked
-                    ? (eraLock ? `Active: ${ERA_LABELS[eraLock] || eraLock}` : 'Any era')
-                    : 'Unlocks at 60 day streak'}
+                  {!eraLockUnlocked
+                    ? 'Unlocks at 45 day streak'
+                    : eraLock ? `Active: ${ERA_LABELS[eraLock] || eraLock}` : 'Off — any era'}
                 </Text>
               </View>
-              {eraRowUnlocked ? (
+              {eraLockUnlocked ? (
                 <Text style={[styles.menuArrow, { color: colors.charcoal }]}>›</Text>
               ) : (
                 <View style={[styles.lockedPill, { backgroundColor: isDark ? '#252525' : '#EBEBEB' }]}>
@@ -500,34 +493,6 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               )}
             </TouchableOpacity>
 
-            {hiddenGemUnlocked && (
-              <ToggleRow
-                label="Hidden Gem mode"
-                sub="Mix rare picks into recommendations"
-                value={mixGems}
-                onToggle={() => handleMixToggle(!mixGems)}
-                colors={colors} borderC={borderC}
-                last={!eraLockUnlocked}
-              />
-            )}
-
-            {eraLockUnlocked && (
-              <View style={[styles.menuRow, { borderBottomColor: borderC, borderBottomWidth: 0 }]}>
-                <View style={{ flex: 1 }}>
-                  <Text style={[styles.menuLabel, { color: colors.ink }]}>Era Lock</Text>
-                  <Text style={[styles.menuSub, { color: colors.charcoal }]}>
-                    {eraLock ? `Active: ${ERA_LABELS[eraLock] || eraLock}` : 'Currently off'}
-                  </Text>
-                </View>
-                {eraLock ? (
-                  <TouchableOpacity style={[styles.disableBtn, { borderColor: borderC }]} onPress={handleDisableEraLock}>
-                    <Text style={[styles.disableBtnText, { color: colors.charcoal }]}>Turn off</Text>
-                  </TouchableOpacity>
-                ) : (
-                  <Text style={[styles.menuArrow, { color: colors.charcoal }]}>›</Text>
-                )}
-              </View>
-            )}
           </SectionBlock>
 
           {/* ── NOTIFICATIONS ── */}
@@ -636,6 +601,60 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
             >
               <Text style={styles.signOutText}>Sign out</Text>
             </TouchableOpacity>
+          )}
+
+          {__DEV__ && (
+            <View style={{
+              margin: 12, marginTop: 4, padding: 14, borderRadius: 14,
+              borderWidth: 0.5, borderColor: '#FF0066',
+              backgroundColor: isDark ? '#1A0010' : '#FFF0F5',
+            }}>
+              <Text style={{ fontSize: 10, fontWeight: '600', color: '#FF0066', letterSpacing: 0.8, marginBottom: 10 }}>
+                DEV — STREAK TESTER
+              </Text>
+              <Text style={{ fontSize: 11, color: isDark ? '#FF6699' : '#CC0044', marginBottom: 10 }}>
+                Sets streak + clears milestones_seen. Then generate an anime to trigger the next milestone unlock.
+              </Text>
+              <View style={{ flexDirection: 'row', gap: 8, alignItems: 'center' }}>
+                <TextInput
+                  style={{
+                    flex: 1, borderWidth: 0.5, borderColor: '#FF0066', borderRadius: 8,
+                    padding: 8, fontSize: 14,
+                    color: isDark ? '#F5F5F5' : '#1A1A1A',
+                    backgroundColor: isDark ? '#2A0018' : '#fff',
+                  }}
+                  placeholder="Enter streak number e.g. 6"
+                  placeholderTextColor="#FF6699"
+                  keyboardType="numeric"
+                  value={debugStreak}
+                  onChangeText={setDebugStreak}
+                />
+                <TouchableOpacity
+                  onPress={handleSetStreak}
+                  style={{ backgroundColor: '#FF0066', paddingHorizontal: 14, paddingVertical: 10, borderRadius: 8 }}
+                >
+                  <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Set</Text>
+                </TouchableOpacity>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
+                {[6, 13, 24, 44].map(n => (
+                  <TouchableOpacity
+                    key={n}
+                    onPress={() => setDebugStreak(String(n))}
+                    style={{
+                      backgroundColor: isDark ? '#2A0018' : '#FFE0EE',
+                      borderWidth: 0.5, borderColor: '#FF0066',
+                      borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5,
+                    }}
+                  >
+                    <Text style={{ fontSize: 11, color: '#FF0066' }}>{n} → day {n + 1}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={{ fontSize: 10, color: '#FF6699', marginTop: 8 }}>
+                Quick set: 6 tests day 7 (Mood Insights) · 13 tests day 14 (Hidden Gem) · 24 tests day 25 (Kore Score) · 44 tests day 45 (Era Lock)
+              </Text>
+            </View>
           )}
 
           <View style={{ height: 40 }} />
