@@ -41,7 +41,6 @@ const ALL_GENRES = [
   { category: 'Tone',           genres: ['Dark', 'Feel-good', 'Mind-bending', 'Wholesome', 'Gritty', 'Philosophical'] },
 ];
 
-
 const ERA_LABELS = {
   '70s': '1970s', '80s': '1980s', '90s': '1990s',
   '00s': '2000s', '10s': '2010s', '20s': '2020s',
@@ -64,20 +63,30 @@ function SectionBlock({ label, children, colors, cardBg, borderC }) {
   );
 }
 
-export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfile: propProfile, onEdit, onOpenEraLock }) {
+export default function ProfileScreen({ 
+  onBack, 
+  streak = 0, 
+  onSignOut, 
+  userProfile: propProfile, 
+  onEdit, 
+  onOpenEraLock,
+  // Added props to handle Reward access from Fix 6
+  setAffiliateRewardType,
+  navigateTo 
+}) {
   const { colors, isDark, toggleDarkMode } = useTheme();
 
   const [favoriteGenres,  setFavoriteGenres]  = useState([]);
   const [genreSearch,     setGenreSearch]     = useState('');
   const [expandedCats,    setExpandedCats]    = useState({});
-  const [genresOpen,      setGenresOpen]      = useState(false); // collapsed by default
+  const [genresOpen,      setGenresOpen]      = useState(false);
   const [saved,           setSaved]           = useState(false);
   const [notifEnabled,    setNotifEnabled]    = useState(false);
   const [notifPermission, setNotifPermission] = useState('undetermined');
   const [notifHour,       setNotifHour]       = useState(20);
   const [notifMinute,     setNotifMinute]     = useState(0);
   const [eraLock,         setEraLockLocal]    = useState(null);
-  const [streakLocal,     setStreakLocal]      = useState(streak);
+  const [streakLocal,     setStreakLocal]     = useState(streak);
   const [userProfile,     setUserProfile]     = useState(propProfile || null);
   const [isGuest,         setIsGuest]         = useState(false);
   const [debugStreak,     setDebugStreak]     = useState('');
@@ -99,7 +108,6 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
       setStreakLocal(currentStreak);
       setEraLockLocal(era);
 
-      // Fallback — load profile directly if not passed as prop
       if (!propProfile && guestMode !== 'true') {
         try {
           const user = await getCurrentUser();
@@ -133,7 +141,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     setSaved(true);
     setTimeout(() => {
       setSaved(false);
-      setGenresOpen(false); // collapse after saving
+      setGenresOpen(false);
     }, 1200);
   };
 
@@ -226,12 +234,11 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setGenresOpen(prev => !prev);
     if (genresOpen) {
-      // closing — reset search
       setGenreSearch('');
     }
   };
 
-  const eraLockUnlocked   = isUnlocked('directors_cut', streakLocal) || eraLock !== null;
+  const eraLockUnlocked   = streakLocal >= 45 || eraLock !== null;
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : colors.border;
   const genrePreview   = favoriteGenres.length > 0
@@ -253,8 +260,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
   const filteredGenres = (genres) =>
     genreSearch ? genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())) : genres;
 
-  // Whether this is the last item in the Recommendations section
-  const recsHasMore = eraLockUnlocked || true; // era row always present
+  const recsHasMore = eraLockUnlocked || true;
 
   return (
     <View style={{ flex: 1 }}>
@@ -346,6 +352,51 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
             </View>
           )}
 
+          {/* ── YOUR REWARDS (Fix 6) ── */}
+          {streakLocal >= 7 && (
+            <SectionBlock label="YOUR REWARDS" colors={colors} cardBg={cardBg} borderC={borderC}>
+              {streakLocal >= 7 && (
+                <TouchableOpacity 
+                  onPress={() => { if(setAffiliateRewardType) setAffiliateRewardType('cdjapan'); if(navigateTo) navigateTo('affiliate_reward'); }} 
+                  style={styles.menuRow}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: '#FFF0E0' }]}>
+                    <Text style={styles.rowIconText}>🎁</Text>
+                  </View>
+                  <Text style={[styles.menuLabel, { color: colors.ink }]}>CDJapan Discount Code</Text>
+                  <Text style={styles.menuArrow}>›</Text>
+                </TouchableOpacity>
+              )}
+              {streakLocal >= 25 && (
+                <TouchableOpacity 
+                  onPress={() => { if(setAffiliateRewardType) setAffiliateRewardType('nordvpn'); if(navigateTo) navigateTo('affiliate_reward'); }} 
+                  style={styles.menuRow}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: '#E8F5EE' }]}>
+                    <Text style={styles.rowIconText}>🌐</Text>
+                  </View>
+                  <Text style={[styles.menuLabel, { color: colors.ink }]}>NordVPN Deal</Text>
+                  <Text style={styles.menuArrow}>›</Text>
+                </TouchableOpacity>
+              )}
+              {streakLocal >= 45 && (
+                <TouchableOpacity 
+                  onPress={() => { if(navigateTo) navigateTo('amazon_shelf'); }} 
+                  style={[styles.menuRow, { borderBottomWidth: 0 }]}
+                  activeOpacity={0.7}
+                >
+                  <View style={[styles.rowIcon, { backgroundColor: '#EEEDFE' }]}>
+                    <Text style={styles.rowIconText}>📦</Text>
+                  </View>
+                  <Text style={[styles.menuLabel, { color: colors.ink }]}>Amazon Anime Shelf</Text>
+                  <Text style={styles.menuArrow}>›</Text>
+                </TouchableOpacity>
+              )}
+            </SectionBlock>
+          )}
+
           {/* ── APPEARANCE ── */}
           <SectionBlock label="APPEARANCE" colors={colors} cardBg={cardBg} borderC={borderC}>
             <TouchableOpacity
@@ -369,7 +420,6 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
           {/* ── RECOMMENDATIONS ── */}
           <SectionBlock label="RECOMMENDATIONS" colors={colors} cardBg={cardBg} borderC={borderC}>
 
-            {/* Favourite genres row — tapping expands the picker inline */}
             <TouchableOpacity
               style={[
                 styles.menuRow,
@@ -389,7 +439,6 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               <Text style={[styles.menuArrow, { color: colors.charcoal, transform: [{ rotate: genresOpen ? '90deg' : '0deg' }] }]}>›</Text>
             </TouchableOpacity>
 
-            {/* Inline expanded genre picker */}
             {genresOpen && (
               <View style={[styles.genresPicker, { borderBottomColor: borderC, borderBottomWidth: recsHasMore ? 0.5 : 0 }]}>
                 <View style={[styles.searchRow, { backgroundColor: isDark ? '#2A2A2A' : colors.chalk, borderColor: borderC }]}>
@@ -467,7 +516,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               </View>
             )}
 
-            {/* Era Lock row */}
+            {/* Era Lock row (Fix 3 Corrected Logic) */}
             <TouchableOpacity
               style={[styles.menuRow, { borderBottomWidth: 0 }, !eraLockUnlocked && { opacity: 0.4 }]}
               onPress={() => { if (eraLockUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
@@ -479,7 +528,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
               <View style={{ flex: 1 }}>
                 <Text style={[styles.menuLabel, { color: colors.ink }]}>Era Lock</Text>
                 <Text style={[styles.menuSub, { color: colors.charcoal }]}>
-                  {!eraLockUnlocked
+                  {!eraLockUnlocked || streakLocal < 45
                     ? 'Unlocks at 45 day streak'
                     : eraLock ? `Active: ${ERA_LABELS[eraLock] || eraLock}` : 'Off — any era'}
                 </Text>
@@ -652,7 +701,7 @@ export default function ProfileScreen({ onBack, streak = 0, onSignOut, userProfi
                 ))}
               </View>
               <Text style={{ fontSize: 10, color: '#FF6699', marginTop: 8 }}>
-                Quick set: 6 tests day 7 (Mood Insights) · 13 tests day 14 (Hidden Gem) · 24 tests day 25 (Kore Score) · 44 tests day 45 (Era Lock)
+                Quick set: 6 tests day 7 (Mood Insights) · 13 tests day 14 (Profile Card) · 24 tests day 25 (Kore Score) · 44 tests day 45 (Era Lock)
               </Text>
             </View>
           )}
@@ -743,6 +792,10 @@ const styles = StyleSheet.create({
   chipText:     { fontSize: 13 },
   saveBtn:      { padding: 14, borderRadius: 12, alignItems: 'center', marginTop: 12 },
   saveBtnText:  { fontSize: 14, fontWeight: '500' },
+
+  rewardRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, borderBottomWidth: 0.5 },
+  rewardLabel:  { fontSize: 14, flex: 1 },
+  rewardIcon:   { fontSize: 16, marginRight: 10 },
 
   signOutBtn:   { alignItems: 'center', paddingVertical: 16 },
   signOutText:  { fontSize: 14, color: '#CC3333', fontWeight: '500' },

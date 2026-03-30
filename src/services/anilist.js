@@ -31,20 +31,36 @@ async function searchAniList(search) {
 export async function getAnimeCoverArt(title) {
   if (!title) return null;
 
-  // Try original title first
-  try {
-    const result = await searchAniList(title);
-    if (result) return result;
-  } catch {}
-
-  // Fallback: simplified title (remove subtitles after colon/dash)
-  const simplified = title.split(/[:\-–]/)[0].trim();
-  if (simplified !== title) {
+  const trySearch = async (term) => {
     try {
-      const result = await searchAniList(simplified);
-      if (result) return result;
-    } catch {}
+      const res = await fetch(ANILIST_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: QUERY, variables: { search: term } }),
+      });
+      const data = await res.json();
+      return data?.data?.Page?.media?.[0] || null;
+    } catch { return null; }
+  };
+
+  // Attempt 1: Exact Title
+  let best = await trySearch(title);
+
+  // Attempt 2: Strip subtitles (Colon/Dash)
+  if (!best) {
+    const simplified = title.split(/[:\-–]/)[0].trim();
+    if (simplified !== title) best = await trySearch(simplified);
   }
 
-  return null;
+  // Attempt 3: Fuzzy Search (remove everything except alphanumeric)
+  if (!best) {
+    const fuzzy = title.replace(/[^a-zA-Z0-9 ]/g, '').trim();
+    best = await trySearch(fuzzy);
+  }
+
+  if (!best) return null;
+  return {
+    cover: best.coverImage?.extraLarge || best.coverImage?.large,
+    banner: best.bannerImage || null 
+  };
 }

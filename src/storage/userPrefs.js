@@ -84,10 +84,12 @@ async function resolveUserId() {
 
 // ─── MILESTONES ──────────────────────────────────────────────────────────────
 
+// Update the MILESTONES array to include the explicit profile_card ID
 export const MILESTONES = [
-  { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '🧠', color: '#7F77DD', title: 'Mood Insights',   rewardType: 'content' },
-  { id: 'kore_score',     days: 25, displayDays: 30, icon: '⚔️', color: '#E8630A', title: 'Kore Score',      rewardType: 'kore_score_and_nordvpn' },
-  { id: 'directors_cut',  days: 45, displayDays: 60, icon: '👑', color: '#7F77DD', title: 'Full Rewards',    rewardType: 'era_lock_and_amazon' },
+  { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '🧠', color: '#7F77DD', title: 'Mood Insights', rewardType: 'mood_insights_and_cdjapan' },
+  { id: 'profile_card',   days: 14, displayDays: 14, icon: '💠', color: '#4D9FFF', title: 'Profile Card',  rewardType: 'profile_card' }, //
+  { id: 'kore_score',     days: 25, displayDays: 30, icon: '⚔️', color: '#E8630A', title: 'Kore Score', rewardType: 'kore_score_and_nordvpn' },
+  { id: 'directors_cut',  days: 45, displayDays: 60, icon: '👑', color: '#7F77DD', title: 'Full Rewards', rewardType: 'era_lock_and_amazon' },
 ];
 
 export function isUnlocked(id, streak) {

@@ -21,7 +21,7 @@ const CELEBRATION_CONFIG = {
     secondaryLabel: 'Back to home',
     secondaryAction: 'home',
   },
-  hidden_gem: {
+  profile_card: {
     bg:          '#041A12',
     accentColor: '#1D9E75',
     badge:       '💎',

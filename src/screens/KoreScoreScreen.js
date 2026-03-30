@@ -38,8 +38,8 @@ const TIER_CONFIG = {
     color:        '#4D9FFF',
     colorDim:     'rgba(77,159,255,0.2)',
     colorFaint:   'rgba(77,159,255,0.06)',
-    bg:           '#060A0F',
-    bgCard:       '#080C10',
+    bg:           '#0A1225',
+    bgCard:       '#0E162B',
     border:       ['#4D9FFF', '#7F77DD', '#4D9FFF'],
     ornament:     '· · ·',
     shareEmoji:   '💫',
@@ -55,8 +55,8 @@ const TIER_CONFIG = {
     color:        '#E8630A',
     colorDim:     'rgba(232,99,10,0.2)',
     colorFaint:   'rgba(232,99,10,0.06)',
-    bg:           '#080400',
-    bgCard:       '#0A0600',
+    bg:           '#160A00',
+    bgCard:       '#1C0E00',
     border:       ['#E8630A', '#FFB347', '#E8630A', '#D4537E'],
     ornament:     '⚔ · ⚔',
     shareEmoji:   '⚔️',
@@ -72,8 +72,8 @@ const TIER_CONFIG = {
     color:        '#FFD700',
     colorDim:     'rgba(255,215,0,0.2)',
     colorFaint:   'rgba(255,215,0,0.06)',
-    bg:           '#080600',
-    bgCard:       '#0A0800',
+    bg:           '#141000',
+    bgCard:       '#1A1400',
     border:       ['#FFD700', '#E8630A', '#7F77DD', '#1D9E75', '#4D9FFF', '#FFD700'],
     ornament:     '★ · ★ · ★',
     shareEmoji:   '👑',
@@ -89,7 +89,7 @@ const TIER_CONFIG = {
 function WatcherArt() {
   return (
     <Svg viewBox="0 0 200 160" width="100%" height="160">
-      <Rect width="200" height="160" fill="#04070E" />
+      <Rect width="200" height="160" fill="#0A1225" />
       {/* Stars */}
       <Circle cx="20" cy="15" r="1" fill="#4D9FFF" opacity="0.6" />
       <Circle cx="60" cy="8" r="1" fill="#7F77DD" opacity="0.5" />
@@ -102,7 +102,7 @@ function WatcherArt() {
       {/* Aura */}
       <Ellipse cx="100" cy="125" rx="45" ry="42" fill="rgba(77,159,255,0.05)" />
       {/* Robes */}
-      <Path d="M58 160 L73 92 Q100 75 127 92 L142 160 Z" fill="#060810" />
+      <Path d="M58 160 L73 92 Q100 75 127 92 L142 160 Z" fill="#12182B" />
       <Path d="M61 160 L75 94 Q100 80 125 94 L139 160 Z" fill="#0A0F18" />
       <Path d="M75 94 Q100 80 125 94 L121 108 Q100 99 79 108 Z" fill="#0F1525" />
       {/* Shoulders subtle */}
@@ -149,7 +149,7 @@ function WatcherArt() {
 function DevoteeArt() {
   return (
     <Svg viewBox="0 0 200 160" width="100%" height="160">
-      <Rect width="200" height="160" fill="#080400" />
+      <Rect width="200" height="160" fill="#160A00" />
       <Ellipse cx="100" cy="160" rx="100" ry="55" fill="rgba(232,99,10,0.06)" />
       {/* Embers */}
       <Circle cx="28" cy="110" r="1.5" fill="#E8630A" opacity="0.6" />
@@ -167,7 +167,7 @@ function DevoteeArt() {
       <Ellipse cx="100" cy="120" rx="48" ry="44" fill="rgba(232,99,10,0.06)" />
       <Ellipse cx="100" cy="110" rx="30" ry="32" fill="rgba(255,100,0,0.07)" />
       {/* Body armor */}
-      <Path d="M54 160 L70 88 Q100 68 130 88 L146 160 Z" fill="#100600" />
+      <Path d="M54 160 L70 88 Q100 68 130 88 L146 160 Z" fill="#211200" />
       <Path d="M57 160 L72 90 Q100 74 128 90 L143 160 Z" fill="#180A00" />
       <Path d="M72 90 Q100 74 128 90 L124 105 Q100 93 76 105 Z" fill="#241200" />
       <Path d="M80 95 Q100 88 120 95 L118 100 Q100 95 82 100 Z" fill="#E8630A" opacity="0.3" />
@@ -222,7 +222,7 @@ function DevoteeArt() {
 function LegendArt() {
   return (
     <Svg viewBox="0 0 200 160" width="100%" height="160">
-      <Rect width="200" height="160" fill="#080600" />
+      <Rect width="200" height="160" fill="#141000" />
       <Ellipse cx="100" cy="0" rx="120" ry="50" fill="rgba(255,215,0,0.04)" />
       <Ellipse cx="100" cy="160" rx="120" ry="60" fill="rgba(232,99,10,0.05)" />
       {/* Gold stars */}
@@ -241,7 +241,7 @@ function LegendArt() {
       <Ellipse cx="100" cy="118" rx="44" ry="44" fill="rgba(232,99,10,0.04)" />
       <Ellipse cx="100" cy="110" rx="30" ry="34" fill="rgba(127,119,221,0.05)" />
       {/* Royal cloak flowing */}
-      <Path d="M42 160 L62 76 Q100 52 138 76 L158 160 Z" fill="#0C0800" />
+      <Path d="M42 160 L62 76 Q100 52 138 76 L158 160 Z" fill="#1F1500" />
       <Path d="M45 160 L65 78 Q100 58 135 78 L155 160 Z" fill="#140E00" />
       {/* Cloak interior */}
       <Path d="M70 160 L76 100 Q100 85 124 100 L130 160 Z" fill="#0A0600" />
@@ -692,7 +692,7 @@ const s = StyleSheet.create({
   barFill:      { height: 5, borderRadius: 3 },
 
   statsGrid:  { flexDirection: 'row', flexWrap: 'wrap', gap: 5, padding: 10, paddingHorizontal: 14, borderBottomWidth: 0.5 },
-  statCell:   { width: '47%', borderRadius: 6, padding: 6, alignItems: 'center', borderWidth: 0.5 },
+  statCell:   { width: '47%', borderRadius: 6, padding: 6, alignItems: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.15)', backgroundColor: 'rgba(255,255,255,0.03)' },
   statVal:    { fontSize: 14, fontWeight: '500', color: '#F5F5F5' },
   statLbl:    { fontSize: 8, color: '#444' },
 

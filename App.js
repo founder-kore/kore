@@ -462,6 +462,7 @@ export default function App() {
     setPendingMilestoneAction(null);
 
     switch (action) {
+      case 'mood_insights_and_cdjapan': setAffiliateRewardType('cdjapan'); navigateTo('affiliate_reward'); break;
       case 'mood_insights':   navigateTo('mood_insights'); break;
       case 'profile_card':    navigateTo('profile_card'); break;
       case 'kore_score':      navigateTo('kore_score'); break;
@@ -573,15 +574,18 @@ export default function App() {
           )}
 
           {screen === 'profile' && (
-            <ProfileScreen
-              onBack={handleBackFromProfile}
-              streak={streak}
-              onSignOut={handleSignOut}
-              userProfile={userProfile}
-              onEdit={() => navigateTo('edit_profile')}
-              onOpenEraLock={() => navigateTo('era_lock')}
-            />
-          )}
+  <ProfileScreen
+    onBack={handleBackFromProfile}
+    streak={streak}
+    onSignOut={handleSignOut}
+    userProfile={userProfile}
+    onEdit={() => navigateTo('edit_profile')}
+    onOpenEraLock={() => navigateTo('era_lock')}
+    // ADD THESE TWO:
+    setAffiliateRewardType={setAffiliateRewardType}
+    navigateTo={navigateTo}
+  />
+)}
           {screen === 'edit_profile' && (
             <EditProfileScreen
               onBack={() => navigateTo('profile')}
