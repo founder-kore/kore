@@ -92,7 +92,8 @@ Respond ONLY with a single valid JSON object. No markdown, no explanation.
 The archetype should be creative and specific — 3 to 5 words that feel like a character class or title.
 The tagline should be one short poetic line in quotation marks.
 The profile should be 2 to 3 sentences written directly to the user ("you") — specific, personal, not generic. Reference their actual patterns. Make it feel like something only they would get.
-The hidden_pattern should be one surprising but true observation about how they watch.`;
+The hidden_pattern should be one surprising but true observation about how they watch.
+The spirit_anime should be the single anime title that best defines this viewer.`;
 
 const KORE_SCORE_PROMPT = `You are Kore, an anime personality engine. Generate a personalised RPG-style anime identity card.
 
@@ -152,9 +153,11 @@ export function getStreamingSearchUrl(platform, title) {
 
 // Always use the Vercel proxy — never call Anthropic directly from the client.
 // The proxy verifies the shared secret before forwarding to Anthropic.
-const API_URL = typeof window !== 'undefined' && typeof window.location !== 'undefined'
-  ? '/api/claude'
-  : 'https://kore-theapp.vercel.app/api/claude';
+//const API_URL = typeof window !== 'undefined' && typeof window.location !== 'undefined'
+//  ? '/api/claude'
+//  : 'https://kore-theapp.vercel.app/api/claude';
+
+const API_URL = 'https://kore-theapp.vercel.app/api/claude';
 
 const HEADERS = {
   'Content-Type': 'application/json',
@@ -302,7 +305,8 @@ Return ONLY this JSON:
   "archetype": "string — 3–5 word creative title e.g. The Midnight Philosopher",
   "tagline": "string — one poetic line in quotation marks",
   "profile": "string — 2–3 sentences written directly to the user using 'you'. Reference their actual patterns. Specific and personal.",
-  "hidden_pattern": "string — one surprising but true observation about how they watch"
+  "hidden_pattern": "string — one surprising but true observation about how they watch",
+  "spirit_anime": "string — the one anime title that best defines this viewer"
 }`;
 
   return callClaude(MOOD_INSIGHTS_PROMPT, userMessage, 500);

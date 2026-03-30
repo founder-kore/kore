@@ -116,14 +116,14 @@ const QuestionBlock = memo(({ question, index, currentStep, answer, onSelect, co
 
 export default function HomeScreen({
   onSubmit, onOpenProfile, onOpenHistory, onOpenWatchLater,
-  onOpenMoodInsights, onOpenKoreScore, onHiddenGemSubmit, streak = 0,
+  onOpenMoodInsights, onOpenKoreScore, onOpenProfileCard,
+  onOpenEraLock, streak = 0,
 }) {
   const { colors, isDark } = useTheme();
   const [answers, setAnswers] = useState({});
   const [currentStep, setCurrentStep] = useState(0);
   const fadeAnim   = useRef(new Animated.Value(0)).current;
   const surpriseAnim = useRef(new Animated.Value(1)).current;
-  const gemGlowAnim  = useRef(new Animated.Value(0.6)).current;
   const ctaAnim      = useRef(new Animated.Value(0)).current;
   const ctaSlideAnim = useRef(new Animated.Value(20)).current;
 
@@ -131,23 +131,15 @@ export default function HomeScreen({
   const questionsWrapperY = useRef(0);
   const questionYPositions = useRef({});
 
-  const hiddenGemUnlocked    = isUnlocked('hidden_gem', streak);
   const moodInsightsUnlocked = isUnlocked('mood_insights', streak);
   const koreScoreUnlocked    = isUnlocked('kore_score', streak);
+  const profileCardUnlocked  = streak >= 14;
+  const eraLockUnlocked      = isUnlocked('directors_cut', streak);
   const nextMilestone        = getNextMilestone(streak);
 
   useEffect(() => {
     Animated.timing(fadeAnim, { toValue: 1, duration: 600, useNativeDriver: false }).start();
   }, []);
-
-  useEffect(() => {
-    if (hiddenGemUnlocked) {
-      Animated.loop(Animated.sequence([
-        Animated.timing(gemGlowAnim, { toValue: 1,   duration: 1200, useNativeDriver: false }),
-        Animated.timing(gemGlowAnim, { toValue: 0.6, duration: 1200, useNativeDriver: false }),
-      ])).start();
-    }
-  }, [hiddenGemUnlocked]);
 
   const allAnswered = questions.every(q => answers[q.id]);
 
@@ -212,11 +204,6 @@ const handleSurprise = () => {
   onSubmit({ vibe: getRandom(SURPRISE_OPTIONS.vibe), storyType: getRandom(SURPRISE_OPTIONS.storyType), commitment: getRandom(SURPRISE_OPTIONS.commitment), _surpriseMode: true });
 };
 
-  const handleHiddenGem = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-    onHiddenGemSubmit({ vibe: getRandom(SURPRISE_OPTIONS.vibe), storyType: getRandom(SURPRISE_OPTIONS.storyType), commitment: getRandom(SURPRISE_OPTIONS.commitment) });
-  };
-
   const progressPercent = nextMilestone ? Math.round((streak / nextMilestone.days) * 100) : 100;
   const whyNowBg = isDark ? '#2A1A00' : '#FFF5EE';
 
@@ -277,7 +264,7 @@ const handleSurprise = () => {
             </View>
           )}
 
-          {(moodInsightsUnlocked || koreScoreUnlocked) && (
+          {(moodInsightsUnlocked || koreScoreUnlocked || profileCardUnlocked || eraLockUnlocked) && (
             <View style={styles.unlockedRow}>
               {moodInsightsUnlocked && (
                 <TouchableOpacity style={[styles.unlockedBtn, { borderColor: '#7F77DD', backgroundColor: isDark ? '#1A1A2A' : '#F0EFFE' }]}
@@ -286,11 +273,25 @@ const handleSurprise = () => {
                   <Text style={[styles.unlockedBtnText, { color: '#7F77DD' }]}>Mood Insights</Text>
                 </TouchableOpacity>
               )}
+              {profileCardUnlocked && (
+                <TouchableOpacity style={[styles.unlockedBtn, { borderColor: '#4D9FFF', backgroundColor: isDark ? '#0A1628' : '#EEF2FF' }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenProfileCard?.(); }}>
+                  <Text style={styles.unlockedBtnIcon}>💠</Text>
+                  <Text style={[styles.unlockedBtnText, { color: '#4D9FFF' }]}>Profile Card</Text>
+                </TouchableOpacity>
+              )}
               {koreScoreUnlocked && (
                 <TouchableOpacity style={[styles.unlockedBtn, { borderColor: colors.ember, backgroundColor: whyNowBg }]}
                   onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenKoreScore(); }}>
                   <Text style={styles.unlockedBtnIcon}>⚔️</Text>
                   <Text style={[styles.unlockedBtnText, { color: colors.ember }]}>Kore Score</Text>
+                </TouchableOpacity>
+              )}
+              {eraLockUnlocked && (
+                <TouchableOpacity style={[styles.unlockedBtn, { borderColor: '#7F77DD', backgroundColor: isDark ? '#1A1A2A' : '#F0EFFE' }]}
+                  onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock?.(); }}>
+                  <Text style={styles.unlockedBtnIcon}>👑</Text>
+                  <Text style={[styles.unlockedBtnText, { color: '#7F77DD' }]}>Era Lock</Text>
                 </TouchableOpacity>
               )}
             </View>
@@ -305,27 +306,6 @@ const handleSurprise = () => {
               </View>
             </TouchableOpacity>
           </Animated.View>
-
-          {hiddenGemUnlocked ? (
-            <Animated.View style={[styles.gemBtnWrap, { opacity: gemGlowAnim }]}>
-              <TouchableOpacity style={[styles.gemBtn, { borderColor: '#1D9E75', backgroundColor: isDark ? '#041A12' : '#E8F5F0' }]} onPress={handleHiddenGem}>
-                <View style={styles.gemBadge}><Text style={styles.gemBadgeText}>14 DAY UNLOCK</Text></View>
-                <Text style={styles.gemIcon}>💎</Text>
-                <View>
-                  <Text style={[styles.gemTitle, { color: '#1D9E75' }]}>Hidden Gem mode</Text>
-                  <Text style={[styles.gemSub, { color: '#0F6E56' }]}>Under 500k ratings — the unknown</Text>
-                </View>
-              </TouchableOpacity>
-            </Animated.View>
-          ) : (
-            <View style={[styles.lockedGemBtn, { borderColor: colors.border, backgroundColor: colors.chalk }]}>
-              <Text style={styles.lockIcon}>🔒</Text>
-              <Text style={[styles.lockedText, { color: colors.charcoal }]}>
-                <Text style={{ color: colors.ember, fontWeight: '500' }}>💎 Hidden Gem mode</Text>
-                {` unlocks at 14 day streak${streak > 0 ? ` — ${14 - streak} day${14 - streak !== 1 ? 's' : ''} to go` : ''}`}
-              </Text>
-            </View>
-          )}
 
           <View style={styles.dividerRow}>
             <View style={[styles.dividerLine, { backgroundColor: colors.border }]} />
@@ -399,16 +379,6 @@ const styles = StyleSheet.create({
   surpriseEmoji: { fontSize: 28 },
   surpriseTitle: { fontSize: 15, fontWeight: '500', marginBottom: 2 },
   surpriseSub: { fontSize: 12 },
-  gemBtnWrap: { marginBottom: 10 },
-  gemBtn: { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 14, borderRadius: 14, borderWidth: 1.5, position: 'relative' },
-  gemBadge: { position: 'absolute', top: 8, right: 10, backgroundColor: '#1D9E75', borderRadius: 20, paddingVertical: 2, paddingHorizontal: 8 },
-  gemBadgeText: { fontSize: 9, color: '#fff', fontWeight: '500', letterSpacing: 0.5 },
-  gemIcon: { fontSize: 24 },
-  gemTitle: { fontSize: 14, fontWeight: '500', marginBottom: 2 },
-  gemSub: { fontSize: 11 },
-  lockedGemBtn: { flexDirection: 'row', alignItems: 'center', gap: 8, padding: 12, borderRadius: 12, borderWidth: 1, borderStyle: 'dashed', marginBottom: 10 },
-  lockIcon: { fontSize: 14 },
-  lockedText: { fontSize: 12, flex: 1, lineHeight: 18 },
   dividerRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 4, marginBottom: 28 },
   dividerLine: { flex: 1, height: 1 },
   dividerText: { fontSize: 12, letterSpacing: 0.3 },

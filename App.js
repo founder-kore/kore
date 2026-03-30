@@ -25,7 +25,7 @@ import {
   getWatchedList, getFavoriteGenres, getStreak, updateStreak,
   getRatingSummary, addToHistory, getCombinedAvoidList,
   getNewlyUnlockedMilestone, markMilestoneSeen,
-  setHiddenGemMode, getDirectorsCutMode, getMixHiddenGems, getEraLock,
+  getDirectorsCutMode, getMixHiddenGems, getEraLock,
   setActiveUser, clearActiveUser,
 } from './src/storage/userPrefs';
 import { lightColors, darkColors } from './src/constants/colors';
@@ -325,6 +325,7 @@ export default function App() {
 
   const handleBackFromProfile = () => {
     getFavoriteGenres().then(setFavoriteGenres);
+    getStreak().then(setStreak);
     navigateTo('home');
   };
 
@@ -352,11 +353,6 @@ export default function App() {
     }
 
     await fetchRecommendation({ ...answers, ...options }, watchedList, favoriteGenres, []);
-  };
-
-  const handleHiddenGemSubmit = async (answers) => {
-    await setHiddenGemMode(true);
-    handleSubmit(answers, { hiddenGemMode: true });
   };
 
   const fetchRecommendation = async (answers, watched, genres, currentSessionList) => {
@@ -454,6 +450,7 @@ export default function App() {
   };
 
   const handleBack = () => {
+    getStreak().then(setStreak);
     navigateTo('home', () => {
       setResult(null); setError(null); setCoverArt(null);
     });
@@ -544,7 +541,8 @@ export default function App() {
               onOpenWatchLater={() => navigateTo('watchlater')}
               onOpenMoodInsights={() => navigateTo('mood_insights')}
               onOpenKoreScore={() => navigateTo('kore_score')}
-              onHiddenGemSubmit={handleHiddenGemSubmit}
+              onOpenProfileCard={() => navigateTo('profile_card')}
+              onOpenEraLock={() => navigateTo('era_lock')}
               streak={streak}
             />
           )}

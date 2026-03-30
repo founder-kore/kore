@@ -86,7 +86,6 @@ async function resolveUserId() {
 
 export const MILESTONES = [
   { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '🧠', color: '#7F77DD', title: 'Mood Insights',   rewardType: 'content' },
-  { id: 'hidden_gem',     days: 14, displayDays: 14, icon: '💎', color: '#1D9E75', title: 'Hidden Gem Mode', rewardType: 'profile_card' },
   { id: 'kore_score',     days: 25, displayDays: 30, icon: '⚔️', color: '#E8630A', title: 'Kore Score',      rewardType: 'kore_score_and_nordvpn' },
   { id: 'directors_cut',  days: 45, displayDays: 60, icon: '👑', color: '#7F77DD', title: 'Full Rewards',    rewardType: 'era_lock_and_amazon' },
 ];
@@ -374,6 +373,7 @@ export async function markMilestoneSeen(id) {
   if (!seen.includes(id)) {
     const updated = [...seen, id];
     await AsyncStorage.setItem(KEYS.MILESTONES_SEEN, JSON.stringify(updated));
+    clearPrefsCache();
     if (_activeUserId) {
       updateCloudPreferences(_activeUserId, { milestones_seen: updated }).catch(() => {});
     }
@@ -448,6 +448,7 @@ export async function setEraLock(era) {
   } else {
     await AsyncStorage.setItem(KEYS.ERA_LOCK, era);
   }
+  clearPrefsCache();
   if (_activeUserId) {
     updateCloudPreferences(_activeUserId, { era_lock: era }).catch(() => {});
   }
