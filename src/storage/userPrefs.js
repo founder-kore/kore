@@ -62,6 +62,7 @@ export function setActiveUser(userId) {
 
 export function clearActiveUser() {
   _activeUserId = null;
+  clearPrefsCache();
 }
 
 export function getActiveUserId() {
@@ -86,10 +87,10 @@ async function resolveUserId() {
 
 // Update the MILESTONES array to include the explicit profile_card ID
 export const MILESTONES = [
-  { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '🧠', color: '#7F77DD', title: 'Mood Insights', rewardType: 'mood_insights_and_cdjapan' },
-  { id: 'profile_card',   days: 14, displayDays: 14, icon: '💠', color: '#4D9FFF', title: 'Profile Card',  rewardType: 'profile_card' }, //
-  { id: 'kore_score',     days: 25, displayDays: 30, icon: '⚔️', color: '#E8630A', title: 'Kore Score', rewardType: 'kore_score_and_nordvpn' },
-  { id: 'directors_cut',  days: 45, displayDays: 60, icon: '👑', color: '#7F77DD', title: 'Full Rewards', rewardType: 'era_lock_and_amazon' },
+  { id: 'mood_insights',  days: 7,  displayDays: 7,  icon: '\uD83E\uDDE0', color: '#7F77DD', title: 'Mood Insights', rewardType: 'mood_insights_and_cdjapan' },
+  { id: 'profile_card',   days: 14, displayDays: 14, icon: '\uD83D\uDCA0', color: '#4D9FFF', title: 'Profile Card',  rewardType: 'profile_card' }, //
+  { id: 'kore_score',     days: 25, displayDays: 30, icon: '\u2694\uFE0F', color: '#E8630A', title: 'Kore Score', rewardType: 'kore_score_and_nordvpn' },
+  { id: 'directors_cut',  days: 45, displayDays: 60, icon: '\uD83D\uDC51', color: '#7F77DD', title: 'Full Rewards', rewardType: 'era_lock_and_amazon' },
 ];
 
 export function isUnlocked(id, streak) {

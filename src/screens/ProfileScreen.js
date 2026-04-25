@@ -2,29 +2,30 @@
 
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
-  ScrollView, TextInput, Linking, Platform, Image,
+  ScrollView, TextInput, Linking, Platform, Image, Animated
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient'; // FIXED: Added missing import
 import * as Haptics from 'expo-haptics';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useTheme } from '../constants/theme';
 import {
   getFavoriteGenres, saveFavoriteGenres,
-  getStreak, isUnlocked,
+  getStreak,
   getEraLock, MILESTONES,
 } from '../storage/userPrefs';
-import { signOut, getCurrentUser, getProfile, updateCloudPreferences } from '../services/supabase';
+import { signOut, getCurrentUser, getProfileState, getRenderableAvatarUrl, resolveAvatarUrl, updateCloudPreferences } from '../services/supabase';
 
 const NOTIF_HOUR_KEY    = 'kore_notif_hour';
 const NOTIF_MINUTE_KEY  = 'kore_notif_minute';
 const NOTIF_ENABLED_KEY = 'kore_notif_enabled';
 
 const NOTIF_MESSAGES = [
-  { title: 'コレ', body: 'Your streak is waiting. What are you watching tonight?' },
-  { title: 'コレ', body: "Don't break the streak. One anime, one question." },
-  { title: 'コレ', body: "Tonight's pick is waiting for you." },
-  { title: 'コレ', body: "Keep it going. What's the vibe tonight?" },
+  { title: '\u30B3\u30EC', body: 'Your streak is waiting. What are you watching tonight?' },
+  { title: '\u30B3\u30EC', body: "Don't break the streak. One anime, one question." },
+  { title: '\u30B3\u30EC', body: "Tonight's pick is waiting for you." },
+  { title: '\u30B3\u30EC', body: "Keep it going. What's the vibe tonight?" },
 ];
 
 const TIME_PRESETS = [
@@ -38,7 +39,7 @@ const TIME_PRESETS = [
 const ALL_GENRES = [
   { category: 'Core',           genres: ['Action', 'Adventure', 'Comedy', 'Drama', 'Fantasy', 'Horror', 'Mystery', 'Romance', 'Sci-Fi', 'Thriller'] },
   { category: 'Anime-specific', genres: ['Isekai', 'Mecha', 'Slice of Life', 'Sports', 'Supernatural', 'Psychological', 'Historical', 'Music'] },
-  { category: 'Tone',           genres: ['Dark', 'Feel-good', 'Mind-bending', 'Wholesome', 'Gritty', 'Philosophical'] },
+  { category: 'Tone',           genres: ['Dark', 'Feel-good', 'Wholesome', 'Gritty', 'Philosophical'] },
 ];
 
 const ERA_LABELS = {
@@ -51,6 +52,24 @@ const MILESTONE_STEPS = [
   { days: 25, label: 'Kore Score' },
   { days: 45, label: 'Era Lock' },
 ];
+
+const REWARD_DATA = [
+  { id: 'mood_insights', unlockDay: 7,  displayDay: 7,  icon: '\uD83E\uDDE0', label: 'Insights', type: 'cdjapan' },
+  { id: 'profile_card', unlockDay: 14, displayDay: 14, icon: '\uD83D\uDCA0', label: 'Profile', type: 'profile_card' },
+  { id: 'kore_score', unlockDay: 25, displayDay: 30, icon: '\u2694\uFE0F', label: 'Score', type: 'nordvpn' },
+  { id: 'directors_cut', unlockDay: 45, displayDay: 60, icon: '\uD83D\uDCE6', label: 'Shelf', type: 'amazon_shelf' },
+];
+
+function getAvatarSource(avatarUrl, refreshNonce = 0) {
+  const normalizedAvatarUrl = typeof avatarUrl === 'string' ? avatarUrl.trim() : '';
+  if (!normalizedAvatarUrl) return null;
+  if (!refreshNonce) {
+    return { uri: normalizedAvatarUrl, cache: 'reload' };
+  }
+
+  const separator = normalizedAvatarUrl.includes('?') ? '&' : '?';
+  return { uri: `${normalizedAvatarUrl}${separator}profile_refresh=${refreshNonce}`, cache: 'reload' };
+}
 
 function SectionBlock({ label, children, colors, cardBg, borderC }) {
   return (
@@ -70,7 +89,6 @@ export default function ProfileScreen({
   userProfile: propProfile, 
   onEdit, 
   onOpenEraLock,
-  // Added props to handle Reward access from Fix 6
   setAffiliateRewardType,
   navigateTo 
 }) {
@@ -90,12 +108,89 @@ export default function ProfileScreen({
   const [userProfile,     setUserProfile]     = useState(propProfile || null);
   const [isGuest,         setIsGuest]         = useState(false);
   const [debugStreak,     setDebugStreak]     = useState('');
+  const [avatarRefreshNonce, setAvatarRefreshNonce] = useState(0);
+
+  const floatAnim = useRef(new Animated.Value(0)).current;
+  const avatarRetryRef = useRef(false);
 
   useEffect(() => {
-    if (propProfile) setUserProfile(propProfile);
-  }, [propProfile]);
+    let cancelled = false;
 
-  useEffect(() => { loadData(); }, []);
+    async function syncPropProfile() {
+      if (!propProfile) return;
+
+      const normalizedPropAvatarUrl = await resolveAvatarUrl(propProfile.avatar_url, { cacheBust: true });
+      if (cancelled) return;
+
+      console.log('[AVATAR_DEBUG] ProfileScreen received prop profile', {
+        avatarField: 'avatar_url',
+        rawAvatarUrl: propProfile.avatar_url ?? null,
+        renderableAvatarUrl: normalizedPropAvatarUrl,
+      });
+      setUserProfile(prev => ({
+        ...(prev || {}),
+        ...propProfile,
+        avatar_url: normalizedPropAvatarUrl || prev?.avatar_url || null,
+      }));
+      avatarRetryRef.current = false;
+      setAvatarRefreshNonce(0);
+    }
+
+    syncPropProfile();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [propProfile?.id, propProfile?.avatar_url, propProfile?.username, propProfile?.display_name, propProfile?.avatar_color]);
+
+  useEffect(() => { 
+    loadData(); 
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(floatAnim, { toValue: -5, duration: 2000, useNativeDriver: true }),
+        Animated.timing(floatAnim, { toValue: 0, duration: 2000, useNativeDriver: true }),
+      ])
+    ).start();
+  }, []);
+
+  useEffect(() => {
+    if (propProfile) {
+      syncLatestProfile();
+    }
+  }, [propProfile?.avatar_url, propProfile?.username, propProfile?.display_name, propProfile?.id]);
+
+  async function syncLatestProfile(options = {}) {
+    const guestModeValue = options.guestMode ?? await AsyncStorage.getItem('kore_guest_mode');
+    if (guestModeValue === 'true') return;
+
+    try {
+      const user = await getCurrentUser();
+      if (!user) return;
+      const result = await getProfileState(user.id);
+      if (result?.profile) {
+        const renderableAvatarUrl = await resolveAvatarUrl(result.profile.avatar_url, { cacheBust: true });
+        console.log('[AVATAR_DEBUG] ProfileScreen syncLatestProfile success', {
+          userId: user.id,
+          avatarField: 'avatar_url',
+          rawAvatarUrl: result.profile.avatar_url ?? null,
+          renderableAvatarUrl,
+        });
+        setUserProfile(prev => ({
+          ...(prev || {}),
+          ...result.profile,
+          avatar_url: renderableAvatarUrl || prev?.avatar_url || getRenderableAvatarUrl(propProfile?.avatar_url) || null,
+        }));
+      } else {
+        console.log('[AVATAR_DEBUG] ProfileScreen syncLatestProfile missing profile', {
+          userId: user.id,
+        });
+      }
+    } catch (e) {
+      console.log('[AVATAR_DEBUG] ProfileScreen syncLatestProfile error', {
+        message: e?.message || String(e),
+      });
+    }
+  }
 
   const loadData = async () => {
     try {
@@ -108,15 +203,7 @@ export default function ProfileScreen({
       setStreakLocal(currentStreak);
       setEraLockLocal(era);
 
-      if (!propProfile && guestMode !== 'true') {
-        try {
-          const user = await getCurrentUser();
-          if (user) {
-            const profile = await getProfile(user.id);
-            if (profile) setUserProfile(profile);
-          }
-        } catch {}
-      }
+      await syncLatestProfile({ guestMode });
 
       const savedHour    = await AsyncStorage.getItem(NOTIF_HOUR_KEY);
       const savedMinute  = await AsyncStorage.getItem(NOTIF_MINUTE_KEY);
@@ -238,18 +325,48 @@ export default function ProfileScreen({
     }
   };
 
+  const handleRewardPress = (item) => {
+    if (streakLocal < item.unlockDay) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      return;
+    }
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    if (item.id === 'directors_cut') {
+      if(navigateTo) navigateTo('amazon_shelf');
+    } else if (item.id === 'profile_card') {
+      if(navigateTo) navigateTo('profile_card');
+    } else {
+      if(setAffiliateRewardType) setAffiliateRewardType(item.type);
+      if(navigateTo) navigateTo('affiliate_reward');
+    }
+  };
+
   const eraLockUnlocked   = streakLocal >= 45 || eraLock !== null;
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
-  const borderC = isDark ? '#2A2A2A' : colors.border;
+  const borderC = isDark ? '#2A2000' : colors.border;
   const genrePreview   = favoriteGenres.length > 0
     ? favoriteGenres.slice(0, 3).join(' · ') + (favoriteGenres.length > 3 ? ` +${favoriteGenres.length - 3}` : '')
     : 'None set';
-  const initials = userProfile
-    ? (userProfile.display_name || userProfile.username || '?').slice(0, 2).toUpperCase()
+  const resolvedUserProfile = userProfile || propProfile;
+  const resolvedAvatarUrl = getRenderableAvatarUrl(resolvedUserProfile?.avatar_url) || null;
+  const profileAvatarSource = getAvatarSource(resolvedAvatarUrl, avatarRefreshNonce);
+  const initials = resolvedUserProfile
+    ? (resolvedUserProfile.display_name || resolvedUserProfile.username || '?').slice(0, 2).toUpperCase()
     : '?';
 
-  const memberSince = userProfile?.created_at
-    ? new Date(userProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+  useEffect(() => {
+    console.log('[AVATAR_DEBUG] ProfileScreen render avatar state', {
+      avatarField: 'avatar_url',
+      propAvatarUrl: propProfile?.avatar_url ?? null,
+      localAvatarUrl: userProfile?.avatar_url ?? null,
+      resolvedAvatarUrl,
+      renderSourceUri: profileAvatarSource?.uri || null,
+      usingFallback: !profileAvatarSource,
+    });
+  }, [propProfile?.avatar_url, userProfile?.avatar_url, resolvedAvatarUrl, profileAvatarSource?.uri]);
+
+  const memberSince = resolvedUserProfile?.created_at
+    ? new Date(resolvedUserProfile.created_at).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
     : null;
 
   const nextMilestone = MILESTONE_STEPS.find(m => streakLocal < m.days) || null;
@@ -261,6 +378,29 @@ export default function ProfileScreen({
     genreSearch ? genres.filter(g => g.toLowerCase().includes(genreSearch.toLowerCase())) : genres;
 
   const recsHasMore = eraLockUnlocked || true;
+
+  const handleAvatarLoad = () => {
+    console.log('[AVATAR_DEBUG] ProfileScreen avatar load success', {
+      avatarUrl: resolvedUserProfile?.avatar_url || null,
+      sourceUri: profileAvatarSource?.uri || null,
+    });
+    avatarRetryRef.current = false;
+  };
+
+  const handleAvatarError = () => {
+    console.log('[AVATAR_DEBUG] ProfileScreen avatar load error', {
+      avatarUrl: resolvedUserProfile?.avatar_url || null,
+      sourceUri: profileAvatarSource?.uri || null,
+    });
+
+    if (avatarRetryRef.current) {
+      return;
+    }
+
+    avatarRetryRef.current = true;
+    setAvatarRefreshNonce(Date.now());
+    syncLatestProfile();
+  };
 
   return (
     <View style={{ flex: 1 }}>
@@ -277,19 +417,22 @@ export default function ProfileScreen({
         <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
 
           {/* ── Profile card ── */}
-          {!isGuest && userProfile && (
+          {!isGuest && resolvedUserProfile && (
             <View style={[styles.profileCard, { backgroundColor: cardBg, borderColor: borderC }]}>
               <View style={styles.profileRow}>
                 <View style={styles.avatarWrap}>
-                  {userProfile.avatar_url ? (
+                  {profileAvatarSource ? (
                     <Image
-                      source={{ uri: userProfile.avatar_url }}
+                      key={profileAvatarSource.uri}
+                      testID="profile-avatar-image"
+                      source={profileAvatarSource}
                       style={styles.avatar}
-                      onError={() => setUserProfile(prev => ({ ...prev, avatar_url: null }))}
+                      onLoad={handleAvatarLoad}
+                      onError={handleAvatarError}
                     />
                   ) : (
-                    <View style={[styles.avatar, { backgroundColor: userProfile.avatar_color || colors.ember }]}>
-                      <Text style={styles.avatarText}>{initials}</Text>
+                    <View testID="profile-avatar-fallback" style={[styles.avatar, { backgroundColor: resolvedUserProfile.avatar_color || colors.ember }]}>
+                      <Text testID="profile-avatar-fallback-text" style={styles.avatarText}>{initials}</Text>
                     </View>
                   )}
                   <View style={[styles.editDot, { borderColor: colors.chalk }]}>
@@ -297,8 +440,8 @@ export default function ProfileScreen({
                   </View>
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={[styles.profileName, { color: colors.ink }]}>{userProfile.display_name || userProfile.username}</Text>
-                  <Text style={[styles.profileUsername, { color: colors.charcoal }]}>@{userProfile.username}</Text>
+                  <Text style={[styles.profileName, { color: colors.ink }]}>{resolvedUserProfile.display_name || resolvedUserProfile.username}</Text>
+                  <Text style={[styles.profileUsername, { color: colors.charcoal }]}>@{resolvedUserProfile.username}</Text>
                   <View style={{ flexDirection: 'row', gap: 6, marginTop: 6, flexWrap: 'wrap' }}>
                     {streakLocal > 0 && (
                       <View style={styles.streakPill}>
@@ -352,50 +495,46 @@ export default function ProfileScreen({
             </View>
           )}
 
-          {/* ── YOUR REWARDS (Fix 6) ── */}
-          {streakLocal >= 7 && (
-            <SectionBlock label="YOUR REWARDS" colors={colors} cardBg={cardBg} borderC={borderC}>
-              {streakLocal >= 7 && (
-                <TouchableOpacity 
-                  onPress={() => { if(setAffiliateRewardType) setAffiliateRewardType('cdjapan'); if(navigateTo) navigateTo('affiliate_reward'); }} 
-                  style={styles.menuRow}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: '#FFF0E0' }]}>
-                    <Text style={styles.rowIconText}>🎁</Text>
-                  </View>
-                  <Text style={[styles.menuLabel, { color: colors.ink }]}>CDJapan Discount Code</Text>
-                  <Text style={styles.menuArrow}>›</Text>
-                </TouchableOpacity>
-              )}
-              {streakLocal >= 25 && (
-                <TouchableOpacity 
-                  onPress={() => { if(setAffiliateRewardType) setAffiliateRewardType('nordvpn'); if(navigateTo) navigateTo('affiliate_reward'); }} 
-                  style={styles.menuRow}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: '#E8F5EE' }]}>
-                    <Text style={styles.rowIconText}>🌐</Text>
-                  </View>
-                  <Text style={[styles.menuLabel, { color: colors.ink }]}>NordVPN Deal</Text>
-                  <Text style={styles.menuArrow}>›</Text>
-                </TouchableOpacity>
-              )}
-              {streakLocal >= 45 && (
-                <TouchableOpacity 
-                  onPress={() => { if(navigateTo) navigateTo('amazon_shelf'); }} 
-                  style={[styles.menuRow, { borderBottomWidth: 0 }]}
-                  activeOpacity={0.7}
-                >
-                  <View style={[styles.rowIcon, { backgroundColor: '#EEEDFE' }]}>
-                    <Text style={styles.rowIconText}>📦</Text>
-                  </View>
-                  <Text style={[styles.menuLabel, { color: colors.ink }]}>Amazon Anime Shelf</Text>
-                  <Text style={styles.menuArrow}>›</Text>
-                </TouchableOpacity>
-              )}
-            </SectionBlock>
-          )}
+          {/* ── MILESTONE TIMELINE ── */}
+          <View style={styles.timelineSection}>
+            <Text style={[styles.sectionLabel, { color: colors.charcoal }]}>YOUR REWARDS JOURNEY</Text>
+            <View style={styles.timelineContainer}>
+              <View style={[styles.timelineLine, { backgroundColor: borderC }]} />
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.timelineScroll}>
+                {REWARD_DATA.map((item) => {
+                  const unlocked = streakLocal >= item.unlockDay;
+                  return (
+                    <TouchableOpacity 
+                      key={item.id} 
+                      onPress={() => handleRewardPress(item)}
+                      style={styles.timelineNode}
+                      activeOpacity={unlocked ? 0.7 : 1}
+                    >
+                      <Text style={[styles.timelineDay, { color: unlocked ? colors.ember : colors.charcoal }]}>DAY {item.displayDay}</Text>
+                      <Animated.View style={[
+                        styles.iconCircle, 
+                        { 
+                          borderColor: unlocked ? colors.ember : borderC, 
+                          backgroundColor: unlocked ? cardBg : (isDark ? '#0A0A0A' : '#F5F5F5'),
+                          transform: unlocked ? [{ translateY: floatAnim }] : [] 
+                        },
+                        unlocked && styles.glowNode
+                      ]}>
+                        <Text style={{ fontSize: 22, opacity: unlocked ? 1 : 0.3 }}>{unlocked ? item.icon : '🔒'}</Text>
+                        {unlocked && (
+                          <View style={[styles.unlockedCheck, { backgroundColor: colors.ember, borderColor: cardBg }]}>
+                            <Text style={{fontSize: 8, color: '#fff', fontWeight: '900'}}>✓</Text>
+                          </View>
+                        )}
+                      </Animated.View>
+                      <Text style={[styles.nodeLabel, { color: unlocked ? colors.ink : colors.charcoal }]}>{item.label}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
+          </View>
+
 
           {/* ── APPEARANCE ── */}
           <SectionBlock label="APPEARANCE" colors={colors} cardBg={cardBg} borderC={borderC}>
@@ -516,7 +655,6 @@ export default function ProfileScreen({
               </View>
             )}
 
-            {/* Era Lock row (Fix 3 Corrected Logic) */}
             <TouchableOpacity
               style={[styles.menuRow, { borderBottomWidth: 0 }, !eraLockUnlocked && { opacity: 0.4 }]}
               onPress={() => { if (eraLockUnlocked && onOpenEraLock) { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onOpenEraLock(); } }}
@@ -585,6 +723,7 @@ export default function ProfileScreen({
                 {notifEnabled && Platform.OS !== 'web' && (
                   <View style={[styles.notifPanel, { backgroundColor: isDark ? '#191919' : '#F8F7F5', borderTopColor: borderC }]}>
                     <Text style={[styles.notifPanelLabel, { color: colors.charcoal }]}>REMIND ME AT</Text>
+                    {/* FIXED: Replaced <div> with <View> below */}
                     <View style={styles.notifPresetRow}>
                       {TIME_PRESETS.map(p => {
                         const active = notifHour === p.h && notifMinute === p.m;
@@ -685,24 +824,6 @@ export default function ProfileScreen({
                   <Text style={{ color: '#fff', fontSize: 13, fontWeight: '500' }}>Set</Text>
                 </TouchableOpacity>
               </View>
-              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 10 }}>
-                {[6, 13, 24, 44].map(n => (
-                  <TouchableOpacity
-                    key={n}
-                    onPress={() => setDebugStreak(String(n))}
-                    style={{
-                      backgroundColor: isDark ? '#2A0018' : '#FFE0EE',
-                      borderWidth: 0.5, borderColor: '#FF0066',
-                      borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5,
-                    }}
-                  >
-                    <Text style={{ fontSize: 11, color: '#FF0066' }}>{n} → day {n + 1}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-              <Text style={{ fontSize: 10, color: '#FF6699', marginTop: 8 }}>
-                Quick set: 6 tests day 7 (Mood Insights) · 13 tests day 14 (Profile Card) · 24 tests day 25 (Kore Score) · 44 tests day 45 (Era Lock)
-              </Text>
             </View>
           )}
 
@@ -714,12 +835,12 @@ export default function ProfileScreen({
 }
 
 const styles = StyleSheet.create({
-  container:    { flex: 1 },
-  header:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 0.5 },
-  backBtn:      { width: 60 },
-  backText:     { fontSize: 15 },
-  headerTitle:  { fontSize: 17, fontWeight: '500' },
-  scroll:       { padding: 16, paddingTop: 14 },
+  container:     { flex: 1 },
+  header:        { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 14, borderBottomWidth: 0.5 },
+  backBtn:       { width: 60 },
+  backText:      { fontSize: 15 },
+  headerTitle:   { fontSize: 17, fontWeight: '500' },
+  scroll:        { padding: 16, paddingTop: 14 },
 
   profileCard:  { borderRadius: 16, borderWidth: 0.5, padding: 16, marginBottom: 16 },
   profileRow:   { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -740,7 +861,7 @@ const styles = StyleSheet.create({
   milestoneBarBg: { height: 5, borderRadius: 3, marginBottom: 8 },
   milestoneBarFill: { height: 5, borderRadius: 3, backgroundColor: '#E8630A' },
   milestoneSub:   { fontSize: 11 },
-  rowIcon:      { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
+  rowIcon:       { width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginRight: 10 },
   rowIconText:  { fontSize: 14 },
   lockedPill:   { borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3 },
   lockedPillText: { fontSize: 11, fontWeight: '500' },
@@ -750,11 +871,10 @@ const styles = StyleSheet.create({
   sectionWrap:  { marginBottom: 8 },
   sectionLabel: { fontSize: 10, fontWeight: '500', letterSpacing: 0.8, marginBottom: 5, paddingLeft: 2 },
   sectionCard:  { borderRadius: 14, borderWidth: 0.5, paddingHorizontal: 14, paddingVertical: 4 },
-
-  menuRow:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, borderBottomWidth: 0.5 },
-  menuLabel:    { fontSize: 14 },
-  menuSub:      { fontSize: 11, marginTop: 2 },
-  menuArrow:    { fontSize: 16 },
+  menuRow:       { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, borderBottomWidth: 0.5 },
+  menuLabel:     { fontSize: 14 },
+  menuSub:       { fontSize: 11, marginTop: 2 },
+  menuArrow:     { fontSize: 16 },
 
   toggleTrack:  { width: 40, height: 24, borderRadius: 12, justifyContent: 'center', position: 'relative' },
   toggleThumb:  { width: 18, height: 18, borderRadius: 9, backgroundColor: '#fff', position: 'absolute' },
@@ -774,7 +894,6 @@ const styles = StyleSheet.create({
   notifWebNote:     { marginTop: 8, borderRadius: 10, borderWidth: 0.5, paddingHorizontal: 14, paddingVertical: 10 },
   notifWebNoteText: { fontSize: 11, lineHeight: 16 },
 
-  // Inline genre picker (expanded inside the card)
   genresPicker: { paddingVertical: 12, paddingHorizontal: 2 },
   searchRow:    { flexDirection: 'row', alignItems: 'center', gap: 8, borderRadius: 10, borderWidth: 0.5, paddingHorizontal: 12, paddingVertical: 8, marginBottom: 12 },
   searchInput:  { flex: 1, fontSize: 14 },
@@ -783,20 +902,27 @@ const styles = StyleSheet.create({
   pillText:     { fontSize: 13, color: '#fff' },
   pillX:        { fontSize: 10, color: 'rgba(255,255,255,0.7)' },
   clearPillsText:{ fontSize: 12, textDecorationLine: 'underline' },
-  genreCat:     { marginBottom: 6 },
+  genreCat:      { marginBottom: 6 },
   catHeader:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 8 },
-  catTitle:     { fontSize: 11, fontWeight: '500', letterSpacing: 0.3, textTransform: 'uppercase' },
-  catChevron:   { fontSize: 12 },
+  catTitle:      { fontSize: 11, fontWeight: '500', letterSpacing: 0.3, textTransform: 'uppercase' },
+  catChevron:    { fontSize: 12 },
   chipGrid:     { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 8 },
   chip:         { paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, borderWidth: 0.5 },
   chipText:     { fontSize: 13 },
-  saveBtn:      { padding: 14, borderRadius: 12, alignItems: 'center', marginTop: 12 },
+  saveBtn:       { padding: 14, borderRadius: 12, alignItems: 'center', marginTop: 12 },
   saveBtnText:  { fontSize: 14, fontWeight: '500' },
-
-  rewardRow:    { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 13, borderBottomWidth: 0.5 },
-  rewardLabel:  { fontSize: 14, flex: 1 },
-  rewardIcon:   { fontSize: 16, marginRight: 10 },
 
   signOutBtn:   { alignItems: 'center', paddingVertical: 16 },
   signOutText:  { fontSize: 14, color: '#CC3333', fontWeight: '500' },
+
+  timelineSection: { marginVertical: 20, paddingBottom: 10 },
+  timelineContainer: { height: 140, justifyContent: 'center', position: 'relative' },
+  timelineLine: { position: 'absolute', top: 65, left: 20, right: 20, height: 1, opacity: 0.5 },
+  timelineScroll: { paddingHorizontal: 20, alignItems: 'center' },
+  timelineNode: { width: 90, alignItems: 'center', marginHorizontal: 5 },
+  timelineDay: { fontSize: 8, fontWeight: '900', letterSpacing: 1, marginBottom: 12, textTransform: 'uppercase' },
+  iconCircle: { width: 60, height: 60, borderRadius: 30, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', zIndex: 2, position: 'relative' },
+  glowNode: { shadowColor: '#E8630A', shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.4, shadowRadius: 12, elevation: 8 },
+  nodeLabel: { fontSize: 11, fontWeight: '700', marginTop: 12, textAlign: 'center' },
+  unlockedCheck: { position: 'absolute', top: -2, right: -2, width: 18, height: 18, borderRadius: 9, borderWidth: 2, alignItems: 'center', justifyContent: 'center', zIndex: 10 },
 });

@@ -5,8 +5,9 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../constants/theme';
-import { getCDJapanHomeURL, NORDVPN_AFFILIATE_URL } from '../constants/affiliates';
+import { getCDJapanHomeURL } from '../constants/affiliates';
 import { getHistory, getRatings } from '../storage/userPrefs';
+import { getNordVpnAffiliateUrl } from '../utils/affiliateLinks';
 
 // What Kore recommends shopping for based on top genres
 const CDJAPAN_CATEGORIES = [
@@ -55,7 +56,7 @@ export default function AffiliateRewardScreen({ type = 'cdjapan', onBack }) {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setOpening(true);
     try {
-      const url = isCDJ ? getCDJapanHomeURL() : NORDVPN_AFFILIATE_URL;
+      const url = isCDJ ? getCDJapanHomeURL() : getNordVpnAffiliateUrl();
       await Linking.openURL(url);
     } catch (e) {
       console.log('Could not open URL:', e);

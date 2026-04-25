@@ -1,3 +1,5 @@
+// src/screens/MilestoneCelebrationScreen.js
+
 import {
   StyleSheet, Text, View, TouchableOpacity,
   SafeAreaView, Animated, Platform,
@@ -14,12 +16,14 @@ const CELEBRATION_CONFIG = {
     badge:       '🧠',
     badgeLabel:  '7 Day Streak',
     headline:    'Mood Insights unlocked',
-    body:        'You\'ve used Kore every day for a week. Claude now has enough data to build your anime personality profile. Find out what kind of viewer you actually are.',
+    // FIX 1 & 2: Removed "Claude" and "data", made it sound more magical and personalized
+    body:        'Seven days in. Kore has mapped your unique viewing patterns to build your anime personality profile. Find out what kind of viewer you actually are.',
     earlyLabel:  null,
     primaryLabel: 'See my profile →',
     primaryAction: 'mood_insights',
-    secondaryLabel: 'Back to home',
-    secondaryAction: 'home',
+    // FIX 3: Added CDJapan claim button instead of "Back to home"
+    secondaryLabel: 'Claim CDJapan discount',
+    secondaryAction: 'cdjapan',
   },
   profile_card: {
     bg:          '#041A12',
@@ -32,7 +36,7 @@ const CELEBRATION_CONFIG = {
     primaryLabel: 'See my card →',
     primaryAction: 'profile_card',
     secondaryLabel: 'Back to home',
-    secondaryAction: 'home',
+    secondaryAction: 'home_only',
   },
   kore_score: {
     bg:          '#1A0E00',

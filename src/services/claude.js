@@ -1,13 +1,15 @@
+// src/services/claude.js
+
 const SYSTEM_PROMPT = `You are Kore, a precise anime recommendation engine. You recommend exactly ONE anime per request.
 
 ABSOLUTE RESPONSE FORMAT RULE:
 Return a single valid JSON object only. No markdown fences, no explanation, no preamble, no postamble. Raw JSON only.
 
 ════════════════════════════════════════
-RULE 1 — AVOID LIST (HIGHEST PRIORITY — NEVER BREAK)
+RULE 1 — AVOID LIST (HIGHEST PRIORITY — CRITICAL)
 ════════════════════════════════════════
 The user will provide an AVOID LIST containing anime they have watched AND anime already recommended this session.
-NEVER recommend anything on this list. This rule overrides every other rule.
+You MUST NOT, UNDER ANY CIRCUMSTANCES, recommend any anime that appears on this list.
 Do not recommend sequels, prequels, or spin-offs of titles on the avoid list unless explicitly asked.
 
 ════════════════════════════════════════
@@ -41,8 +43,8 @@ Dark & gritty → mature themes, moral complexity.
 ════════════════════════════════════════
 RULE 4 — PERSONALISATION
 ════════════════════════════════════════
-Loved list → strongest signal. Match genre, tone, era, emotional register.
-Disliked list → avoid the style of every title listed.
+Loved list → strongest signal. Match genre, tone, era, emotional register. (DO NOT RECOMMEND THE LOVED TITLES THEMSELVES).
+Disliked list → avoid the style of every title listed. (DO NOT RECOMMEND THE DISLIKED TITLES).
 Favourite genres → default to these unless vibe points elsewhere.
 
 ════════════════════════════════════════
@@ -78,11 +80,9 @@ ERA LOCK — WHEN ACTIVE (overrides era diversity in Rule 5)
 ════════════════════════════════════════
 FINAL CHECK BEFORE RESPONDING
 ════════════════════════════════════════
-1. Title on avoid list? → Pick something else.
-2. Episode count satisfies commitment rule? → If not, pick something else.
-3. Matches both vibe AND story type? → If not, pick something else.
-4. Funimation in streaming list? → Remove it.
-5. Era lock active but title outside that era? → Pick something else.
+1. Have I verified my planned recommendation is NOT on the user's Avoid, Loved, or Disliked lists? If it is, START OVER and pick a new title.
+2. Episode count satisfies commitment rule? If not, pick something else.
+3. Matches both vibe AND story type? If not, pick something else.
 Only output JSON once all checks pass.`;
 
 const MOOD_INSIGHTS_PROMPT = `You are Kore, an anime personality analyst. Generate a personalised anime personality profile based on the user's viewing patterns.
@@ -114,11 +114,47 @@ The profile is one sentence written to the user, specific to their patterns.
 The spirit_anime is the one title that best represents their taste so far.
 The serial_number should be a formatted code like "KP-2026-XXXX" where XXXX is a 4-digit number based on their data.`;
 
-const AMAZON_SHELF_PROMPT = `You are Kore, an anime merchandise curator. Generate a personalised anime shelf of Amazon product recommendations.
+const AFFILIATE_PRODUCTS_PROMPT = `You are Kore, an anime merchandise curator. Generate retailer-specific anime product suggestions that are directly tied to the exact recommended title.
+
+Respond ONLY with a single valid JSON object. No markdown, no explanation.
+
+RULES:
+1. Only suggest products that are plausibly tied to the exact anime title given.
+2. If a retailer likely has no relevant items, return an empty array for that retailer.
+3. Prioritize manga, Blu-rays, figures, art books, soundtracks, and official merch.
+4. Keep suggestions concise and specific. No generic filler like "anime poster".
+5. search_query must be the exact phrase Kore should search on that retailer.
+
+Return this exact shape:
+{
+  "amazon": [
+    {
+      "product_name": "string",
+      "product_type": "manga or bluray or figure or art_book or soundtrack or merch",
+      "search_query": "string",
+      "reason": "string"
+    }
+  ],
+  "cdjapan": [
+    {
+      "product_name": "string",
+      "product_type": "manga or bluray or figure or art_book or soundtrack or merch",
+      "search_query": "string",
+      "reason": "string"
+    }
+  ]
+}`;
+
+// FIX 5/6: Overhauled Shelf Prompt to demand specific Collector items and real ASINs.
+const AMAZON_SHELF_PROMPT = `You are Kore, an elite anime merchandise curator. Generate a personalised collector's shelf of REAL, SPECIFIC Amazon products.
 
 Respond ONLY with a single valid JSON array. No markdown, no explanation.
 
-Each item should be directly connected to a specific anime the user loved. Be specific — not generic anime merchandise, but the exact best product for each loved title. Prioritise manga volumes continuing past the anime, official art books, and OSTs.`;
+RULES:
+1. Items MUST be specific, high-quality, existing products. Examples: "Berserk Deluxe Edition Volume 1", "Cowboy Bebop Original Soundtrack Vinyl", "Good Smile Pop Up Parade Guts Figure".
+2. NO generic items like "Attack on Titan Shirt" or "Anime Poster".
+3. Provide the exact 10-character Amazon ASIN for the product. This is critical for fetching the real product image.
+4. Each item must tie back to their loved anime list.`;
 
 const FILLER_PROMPT = `You are an anime filler expert. Respond ONLY with a single valid JSON object or the word null. No markdown, no explanation. Only respond with data you are highly confident about.`;
 
@@ -151,12 +187,6 @@ export function getStreamingSearchUrl(platform, title) {
   return null;
 }
 
-// Always use the Vercel proxy — never call Anthropic directly from the client.
-// The proxy verifies the shared secret before forwarding to Anthropic.
-//const API_URL = typeof window !== 'undefined' && typeof window.location !== 'undefined'
-//  ? '/api/claude'
-//  : 'https://kore-theapp.vercel.app/api/claude';
-
 const API_URL = 'https://kore-theapp.vercel.app/api/claude';
 
 const HEADERS = {
@@ -164,18 +194,17 @@ const HEADERS = {
   'x-kore-secret': process.env.EXPO_PUBLIC_KORE_SECRET,
 };
 
-// Core API call — parses JSON response, strips any stray markdown fences
 async function callClaude(systemPrompt, userMessage, maxTokens = 1000) {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s timeout
+  const timeoutId = setTimeout(() => controller.abort(), 15000);
 
   let response;
   try {
     response = await fetch(API_URL, {
       signal: controller.signal,
-    method: 'POST',
-    headers: HEADERS,
-    body: JSON.stringify({
+      method: 'POST',
+      headers: HEADERS,
+      body: JSON.stringify({
         model: 'claude-sonnet-4-20250514',
         max_tokens: maxTokens,
         system: systemPrompt,
@@ -190,8 +219,16 @@ async function callClaude(systemPrompt, userMessage, maxTokens = 1000) {
   clearTimeout(timeoutId);
   const data = await response.json();
   if (!response.ok) throw new Error(data.error?.message || 'API call failed');
-  const clean = data.content[0].text.replace(/```json|```/g, '').trim();
-  return JSON.parse(clean);
+  try {
+    const rawText = data?.content?.[0]?.text;
+    if (typeof rawText !== 'string') {
+      throw new Error('invalid_payload');
+    }
+    const clean = rawText.replace(/```json|```/g, '').trim();
+    return JSON.parse(clean);
+  } catch {
+    throw new Error('Unexpected response from recommendation service');
+  }
 }
 
 // ─── RECOMMENDATION ───────────────────────────────────────────────────────────
@@ -217,8 +254,8 @@ export async function getRecommendation({
 
   const tasteSection = (lovedList || dislikedList) ? `
 TASTE FINGERPRINT:
-${lovedList    ? `Loved (strongest signal — match this energy): ${lovedList}` : ''}
-${dislikedList ? `Disliked (avoid this style entirely): ${dislikedList}` : ''}` : '';
+${lovedList    ? `Loved (strongest signal for tone — BUT DO NOT RECOMMEND THESE TITLES): ${lovedList}` : ''}
+${dislikedList ? `Disliked (avoid this style entirely AND DO NOT RECOMMEND THESE TITLES): ${dislikedList}` : ''}` : '';
 
   const genreSection = favoriteGenres !== 'No preference'
     ? `Favourite genres (use unless vibe points elsewhere): ${favoriteGenres}` : '';
@@ -243,7 +280,7 @@ ${genreSection}
 ${tasteSection}
 ${modeSection}
 
-AVOID LIST (absolute — never recommend any of these):
+AVOID LIST (CRITICAL: DO NOT RECOMMEND ANY OF THESE TITLES):
 ${fullAvoidList}
 
 Respond with this exact JSON only — raw JSON, no markdown:
@@ -408,7 +445,54 @@ Return ONLY this JSON:
   return callClaude(PROFILE_CARD_PROMPT, userMessage, 400);
 }
 
-// ─── AMAZON SHELF ─────────────────────────────────────────────────────────────
+// ─── AMAZON SHELF (UPDATED FOR DIRECT URLS AND IMAGES) ────────────────────────
+
+function sanitizeAffiliateProducts(items) {
+  if (!Array.isArray(items)) return [];
+
+  return items
+    .filter(item => item && typeof item === 'object')
+    .map(item => ({
+      product_name: typeof item.product_name === 'string' ? item.product_name.trim() : '',
+      product_type: typeof item.product_type === 'string' ? item.product_type.trim() : '',
+      search_query: typeof item.search_query === 'string' ? item.search_query.trim() : '',
+      reason: typeof item.reason === 'string' ? item.reason.trim() : '',
+    }))
+    .filter(item => item.product_name.length > 0)
+    .slice(0, 3);
+}
+
+export async function generateAffiliateProductsForAnime({
+  animeTitle,
+  genres = [],
+  synopsis = '',
+  retailers = ['amazon', 'cdjapan'],
+}) {
+  if (!animeTitle || typeof animeTitle !== 'string') {
+    return { amazon: [], cdjapan: [] };
+  }
+
+  const requestedRetailers = Array.isArray(retailers)
+    ? retailers.filter(Boolean)
+    : ['amazon', 'cdjapan'];
+
+  const userMessage = `Generate retailer-specific anime product suggestions for this exact recommendation.
+
+Anime title: ${animeTitle}
+Genres: ${Array.isArray(genres) && genres.length > 0 ? genres.join(', ') : 'unknown'}
+Synopsis: ${typeof synopsis === 'string' && synopsis.trim().length > 0 ? synopsis.trim() : 'unknown'}
+Retailers to fill: ${requestedRetailers.join(', ')}
+
+Only include suggestions for the requested retailers.
+If a retailer likely has nothing specific for this anime, return an empty array for that retailer.`;
+
+  const response = await callClaude(AFFILIATE_PRODUCTS_PROMPT, userMessage, 700);
+
+  return {
+    amazon: requestedRetailers.includes('amazon') ? sanitizeAffiliateProducts(response?.amazon) : [],
+    cdjapan: requestedRetailers.includes('cdjapan') ? sanitizeAffiliateProducts(response?.cdjapan) : [],
+  };
+}
 
 export async function generateAmazonShelf({ lovedList, history }) {
   if (!lovedList || lovedList.length === 0) return [];
@@ -423,28 +507,42 @@ export async function generateAmazonShelf({ lovedList, history }) {
 
   const userMessage = `Generate 4–6 personalised Amazon product recommendations for an anime fan.
 
-Their loved anime: ${lovedList.slice(0, 8).join(', ')}
-Their top genres: ${topGenres.join(', ') || 'mixed'}
+Loved anime: ${lovedList.slice(0, 8).join(', ')}
+Top genres: ${topGenres.join(', ') || 'mixed'}
 
-Rules:
-- Each product MUST be directly tied to one of their loved anime
-- Prioritise: manga volumes continuing past the anime, official art books, OSTs
-- For long-running anime (Naruto, Bleach, One Piece): recommend later volumes they probably haven't read
-- Include the specific volume number for manga (e.g. "Vinland Saga Vol. 7-12 Box Set")
-- Be specific — not "anime merchandise" but the actual best product
-
-Return ONLY a JSON array:
+Return ONLY a JSON array in this exact format:
 [
   {
     "anime_title": "string — which loved anime this is for",
-    "product_name": "string — specific product name with volume/edition if applicable",
-    "product_type": "manga_volumes or art_book or ost or figure or other",
-    "reason": "string — one sentence, why this specifically for someone who loved that anime",
-    "amazon_search": "string — exact search query to find it on Amazon e.g. 'Vinland Saga Volume 7 manga'"
+    "product_name": "string — HIGHLY SPECIFIC product name (e.g., 'Evangelion Finally Vinyl OST' or 'Berserk Deluxe Edition Vol. 1')",
+    "product_type": "manga_volumes or art_book or ost or figure",
+    "asin": "string — Exact 10-character Amazon ASIN (e.g. '1506711987'). Must be real.",
+    "amazon_search": "string — exact search query to find it if ASIN fails"
   }
 ]`;
 
-  return callClaude(AMAZON_SHELF_PROMPT, userMessage, 800);
+  const items = await callClaude(AMAZON_SHELF_PROMPT, userMessage, 800);
+  
+  if (!Array.isArray(items)) return [];
+
+  // Post-process the response to construct the actual Amazon Image URL & Product Link
+  return items.map(item => {
+    // If Claude provides a valid 10-character ASIN, we can generate the real Amazon image
+    const imageUrl = (item.asin && item.asin.length === 10) 
+      ? `https://images-na.ssl-images-amazon.com/images/P/${item.asin}.01.LZZZZZZZ.jpg` 
+      : null;
+      
+    // If Claude provides a valid ASIN, create the direct store link
+    const productUrl = (item.asin && item.asin.length === 10)
+      ? `https://www.amazon.com/dp/${item.asin}`
+      : null;
+
+    return {
+      ...item,
+      image_url: imageUrl,
+      product_url: productUrl
+    };
+  });
 }
 
 // ─── FILLER GUIDE ─────────────────────────────────────────────────────────────

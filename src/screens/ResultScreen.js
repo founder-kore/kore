@@ -3,10 +3,12 @@ import {
   ScrollView, Animated, Share, Linking, Platform, Image,
 } from 'react-native';
 import { useState, useEffect, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../constants/theme';
 import { saveRating, addToWatchLater, isInWatchLater, getRatings } from '../storage/userPrefs';
 import { getStreamingSearchUrl, getFillerGuide } from '../services/claude';
+import AffiliateEnhanceSection from '../components/AffiliateEnhanceSection';
 
 const LOADING_MESSAGES = {
   'Chill':     ['Finding something that won\'t stress you out...', 'Ignoring anything with a long training arc...', 'Scanning the calm end of the catalogue...', 'Almost there...'],
@@ -29,19 +31,12 @@ const VIBE_CONFIG = {
 };
 
 // Deep link schemes that go directly to search within the native app
-// These are the best-known working deep link formats for each platform
 const APP_DEEP_LINKS = {
-  // Crunchyroll: opens search tab with query
   crunchyroll: (t) => `crunchyroll://search?q=${encodeURIComponent(t)}`,
-  // Netflix: opens search with query pre-filled
   netflix: (t) => `netflix://search/${encodeURIComponent(t)}`,
-  // Hulu: opens search with query
   hulu: (t) => `hulu://search?q=${encodeURIComponent(t)}`,
-  // Disney+: opens search with query
   disney: (t) => `disneyplus://search?q=${encodeURIComponent(t)}`,
-  // Amazon Prime Video: opens search
   amazon: (t) => `aiv://aiv/search?phrase=${encodeURIComponent(t)}`,
-  // Max (HBO): opens search
   max: (t) => `max://search/${encodeURIComponent(t)}`,
 };
 
@@ -74,7 +69,6 @@ function getPlatformKey(platform) {
   return null;
 }
 
-// Platforms that have a known working deep link scheme
 const PLATFORMS_WITH_APP = ['crunchyroll', 'netflix', 'hulu', 'disney', 'amazon', 'max'];
 
 function StreamingChoiceModal({ platform, title, onClose, colors }) {
@@ -248,6 +242,7 @@ function LoadingScreen({ colors, vibe }) {
 export default function ResultScreen({
   result, coverArt, loading, error, onBack, onGenerateAnother,
   rerollCoolingDown, rerollCount, maxRerolls, vibe, isDetailView = false, isSurprise = false,
+  affiliateUnlockState = null, userRegion = null,
 }) {
   const { colors, isDark } = useTheme();
   const coverOpacity  = useRef(new Animated.Value(0)).current;
@@ -320,8 +315,6 @@ export default function ResultScreen({
     setSavedLater(true);
   };
 
-  // On web: go straight to browser search
-  // On mobile: show choice modal
   const handleStreamingPress = (platform) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (Platform.OS === 'web') {
@@ -343,16 +336,11 @@ export default function ResultScreen({
 
     if (action === 'app' && key && APP_DEEP_LINKS[key]) {
       try {
-        // Attempt deep link directly — opens app to search results if installed
-        // No canOpenURL check: broken in Expo Go, works fine in production builds
         await Linking.openURL(APP_DEEP_LINKS[key](title));
         return;
-      } catch {
-        // App not installed — fall through to browser
-      }
+      } catch {}
     }
 
-    // Browser fallback — search URL goes directly to search results
     const browserUrl = key && WEB_SEARCH_URLS[key]
       ? WEB_SEARCH_URLS[key](title)
       : getStreamingSearchUrl(platform, title);
@@ -443,21 +431,33 @@ if (error) return (
 
   const metaChips = [
     releaseYear                    ? { label: String(releaseYear),       key: 'year'    } : null,
-    { label: episodeLabel,                                                key: 'eps'     },
+    { label: episodeLabel,                                               key: 'eps'     },
     seasonCount && seasonCount > 1 ? { label: `${seasonCount} seasons`,  key: 'seasons' } : null,
     contentRating                  ? { label: contentRating,             key: 'rating'  } : null,
   ].filter(Boolean);
+
+  // The safest, most reliable fallback image string
+  const fallbackImage = coverArt?.banner || coverArt?.cover;
 
   return (
     <View style={{ flex: 1 }}>
       <SafeAreaView style={[styles.container, { backgroundColor: colors.snow }]}>
         <ScrollView contentContainerStyle={styles.scroll} bounces={false}>
 
-          {/* Banner */}
+          {/* BACK TO BASICS BANNER */}
           <View style={[styles.bannerWrap, { backgroundColor: '#1A1A1A' }]}>
-            {coverArt?.banner ? (
-              <Animated.View style={[styles.bannerImageWrap, { opacity: bannerOpacity }]}>
-                <Image source={{ uri: coverArt.banner }} style={styles.bannerImage} resizeMode="cover" />
+            {fallbackImage ? (
+              <Animated.View style={[styles.bannerImageWrap, { opacity: coverArt?.banner ? bannerOpacity : coverOpacity }]}>
+                <Image 
+                  source={{ uri: fallbackImage }} 
+                  style={styles.bannerImage} 
+                  resizeMode="cover" 
+                />
+                {/* Simple overlay to ensure the back button is always legible */}
+                <LinearGradient
+                  colors={['rgba(0,0,0,0.1)', 'rgba(0,0,0,0.7)']}
+                  style={StyleSheet.absoluteFillObject}
+                />
               </Animated.View>
             ) : (
               <View style={styles.bannerFallback}>
@@ -465,7 +465,8 @@ if (error) return (
                 <Text style={styles.bannerFallbackTitle} numberOfLines={1}>{title}</Text>
               </View>
             )}
-            <View style={styles.bannerFade} />
+
+            {/* Back Button */}
             <TouchableOpacity
               style={[styles.backPill, { backgroundColor: colors.snow }]}
               onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onBack(); }}
@@ -617,6 +618,12 @@ if (error) return (
               </View>
             )}
 
+            <AffiliateEnhanceSection
+              anime={result}
+              unlockState={affiliateUnlockState}
+              userRegion={userRegion}
+            />
+
             {/* Rating */}
             <View style={[styles.ratingSection, { backgroundColor: colors.card, borderColor: colors.border }]}>
               <Text style={[styles.ratingLabel, { color: colors.charcoal }]}>
@@ -715,13 +722,15 @@ const styles = StyleSheet.create({
   loadingMessage: { fontSize: 13, fontStyle: 'italic', textAlign: 'center', marginTop: 4 },
   dotsRow: { flexDirection: 'row', gap: 8, marginTop: 4 },
   dot: { width: 7, height: 7, borderRadius: 4 },
+  
+  // RESTORED: Simple, effective banner styles
   bannerWrap: { width: '100%', height: 130, position: 'relative', overflow: 'hidden' },
   bannerImageWrap: { width: '100%', height: '100%' },
   bannerImage: { width: '100%', height: '100%' },
   bannerFallback: { width: '100%', height: '100%', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 24 },
   bannerFallbackLabel: { fontSize: 12, color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textTransform: 'uppercase' },
   bannerFallbackTitle: { fontSize: 22, fontWeight: '500', color: '#F5F5F5', textAlign: 'center' },
-  bannerFade: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 60, backgroundColor: 'rgba(0,0,0,0.3)' },
+  
   backPill: { position: 'absolute', top: 14, left: 14, flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 7, paddingHorizontal: 14, borderRadius: 20, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.12, shadowRadius: 6, elevation: 4 },
   backPillArrow: { fontSize: 14, fontWeight: '500' },
   backPillText: { fontSize: 13, fontWeight: '500' },

@@ -2,8 +2,8 @@ const ANILIST_URL = 'https://graphql.anilist.co';
 
 const QUERY = `
   query ($search: String) {
-    Page(perPage: 5) {
-      media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+    Page(perPage: 3) {
+      media(search: $search, type: ANIME, sort: [SEARCH_MATCH, POPULARITY_DESC]) {
         title { romaji english native }
         coverImage { extraLarge large medium }
         bannerImage
@@ -13,21 +13,6 @@ const QUERY = `
   }
 `;
 
-async function searchAniList(search) {
-  const res = await fetch(ANILIST_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: QUERY, variables: { search } }),
-  });
-  const data = await res.json();
-  const media = data?.data?.Page?.media;
-  if (!media || media.length === 0) return null;
-  const best = media[0];
-  const cover = best.coverImage?.extraLarge || best.coverImage?.large || best.coverImage?.medium || null;
-  if (!cover) return null;
-  return { cover, banner: best.bannerImage || null };
-}
-
 export async function getAnimeCoverArt(title) {
   if (!title) return null;
 
@@ -35,32 +20,62 @@ export async function getAnimeCoverArt(title) {
     try {
       const res = await fetch(ANILIST_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
         body: JSON.stringify({ query: QUERY, variables: { search: term } }),
       });
       const data = await res.json();
       return data?.data?.Page?.media?.[0] || null;
-    } catch { return null; }
+    } catch { 
+      return null; 
+    }
   };
 
-  // Attempt 1: Exact Title
+  // Attempt 1: Exact Title Search
   let best = await trySearch(title);
 
-  // Attempt 2: Strip subtitles (Colon/Dash)
+  // Attempt 2: Aggressive Subtitle & Season Stripping
+  // Removes colons, dashes, parentheses, and "Season/Part" phrasing
   if (!best) {
-    const simplified = title.split(/[:\-–]/)[0].trim();
-    if (simplified !== title) best = await trySearch(simplified);
+    let simplified = title.split(/[:\-–(]/)[0].trim();
+    simplified = simplified.replace(/Season \d+/i, '').replace(/Part \d+/i, '').trim();
+    
+    if (simplified && simplified !== title) {
+      best = await trySearch(simplified);
+    }
   }
 
-  // Attempt 3: Fuzzy Search (remove everything except alphanumeric)
+  // Attempt 3: JIKAN (MyAnimeList) API FALLBACK
   if (!best) {
-    const fuzzy = title.replace(/[^a-zA-Z0-9 ]/g, '').trim();
-    best = await trySearch(fuzzy);
+    try {
+      // Tiny delay to respect API limits
+      await new Promise(resolve => setTimeout(resolve, 350));
+      
+      const cleanTitle = title.split(/[:\-–(]/)[0].trim();
+      const res = await fetch(`https://api.jikan.moe/v4/anime?q=${encodeURIComponent(cleanTitle)}&limit=1`);
+      const json = await res.json();
+      const jikanData = json?.data?.[0];
+      
+      if (jikanData) {
+        const coverArt = jikanData.images?.jpg?.large_image_url || jikanData.images?.jpg?.image_url;
+        return {
+          cover: coverArt,
+          // FIX: Jikan doesn't have banners, so we use the cover art as the banner fallback
+          banner: coverArt
+        };
+      }
+    } catch {
+      return null;
+    }
   }
 
+  // If both AniList and Jikan fail (extremely rare), return null
   if (!best) return null;
+  
+  const coverImg = best.coverImage?.extraLarge || best.coverImage?.large;
+  
   return {
-    cover: best.coverImage?.extraLarge || best.coverImage?.large,
-    banner: best.bannerImage || null 
+    cover: coverImg,
+    // FIX: If AniList doesn't have an official banner, use the high-res cover image as the banner
+    banner: best.bannerImage || coverImg || null 
   };
 }

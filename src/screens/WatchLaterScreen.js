@@ -49,16 +49,21 @@ export default function WatchLaterScreen({ onBack, onSelectAnime }) {
   const [items, setItems] = useState([]);
   const [modalConfig, setModalConfig] = useState(null);
 
+  const loadItems = async () => {
+    const latestItems = await getWatchLater();
+    setItems(latestItems);
+  };
+
   useEffect(() => {
-    getWatchLater().then(setItems);
+    loadItems();
   }, []);
 
   const showModal = (config) => setModalConfig(config);
   const hideModal = () => setModalConfig(null);
 
   const handleRemoveOne = async (title) => {
-    const updated = await removeFromWatchLater(title);
-    setItems(updated);
+    await removeFromWatchLater(title);
+    await loadItems();
     hideModal();
   };
 

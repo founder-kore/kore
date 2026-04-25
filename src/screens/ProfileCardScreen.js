@@ -181,10 +181,12 @@ export default function ProfileCardScreen({ onBack, streak = 0 }) {
       setCard(result);
       Animated.sequence([
         Animated.parallel([
-          Animated.timing(cardFade,  { toValue: 1, duration: 600, useNativeDriver: false }),
-          Animated.timing(cardSlide, { toValue: 0, duration: 600, useNativeDriver: false }),
+          // FIX 2: Switched useNativeDriver from false to true to stop the crash
+          Animated.timing(cardFade,  { toValue: 1, duration: 600, useNativeDriver: true }),
+          Animated.timing(cardSlide, { toValue: 0, duration: 600, useNativeDriver: true }),
         ]),
-        Animated.timing(statsFade, { toValue: 1, duration: 400, useNativeDriver: false }),
+        // FIX 2: Switched useNativeDriver from false to true to stop the crash
+        Animated.timing(statsFade, { toValue: 1, duration: 400, useNativeDriver: true }),
       ]).start();
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }

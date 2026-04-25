@@ -2,6 +2,7 @@
   "expo": {
     "name": "Kore",
     "slug": "kore",
+    "scheme": "kore",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -16,17 +17,28 @@
     ],
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.kore.app"
+      "bundleIdentifier": "com.koreapp.mobile",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#F0EFED"
       },
-      "package": "com.kore.app"
+      "package": "com.koreapp.mobile"
     },
     "web": {
       "favicon": "./assets/icon.png"
+    },
+    "plugins": [
+      "expo-web-browser"
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "4d6ef791-fbdb-47fb-8218-1fdb5b336aa2"
+      }
     }
   }
 }

@@ -1,14 +1,13 @@
-// src/screens/AuthScreen.js
-
 import {
   StyleSheet, Text, View, TouchableOpacity, SafeAreaView,
-  TextInput, Animated, KeyboardAvoidingView, Platform,
-  ScrollView, ActivityIndicator,
+  TextInput, KeyboardAvoidingView, Platform,
+  ScrollView, ActivityIndicator, Keyboard
 } from 'react-native';
-import { useState, useRef, useEffect } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as Haptics from 'expo-haptics';
 import { useTheme } from '../constants/theme';
-import { signIn, signUp, checkUsernameAvailable, createProfile, updateProfile, supabase, getGoogleAvatarUrl } from '../services/supabase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { signIn, signUp, checkUsernameAvailable, upsertProfile, supabase, getGoogleAvatarUrl, signInWithGoogle } from '../services/supabase';
 
 const AVATAR_COLORS = [
   '#E8630A', '#7F77DD', '#1D9E75', '#D4537E',
@@ -27,127 +26,158 @@ export default function AuthScreen({ onAuthSuccess, onContinueAsGuest, startAtPr
   const [loading,     setLoading]     = useState(false);
   const [error,       setError]       = useState('');
   const [userId,      setUserId]      = useState(propUserId || null);
+  const googleTimeoutRef = useRef(null);
 
-  const fadeAnim  = useRef(new Animated.Value(0)).current;
-  const slideAnim = useRef(new Animated.Value(16)).current;
+  useEffect(() => {
+    return () => {
+      if (googleTimeoutRef.current) {
+        clearTimeout(googleTimeoutRef.current);
+      }
+    };
+  }, []);
 
-  const animateIn = () => {
-    fadeAnim.setValue(0); slideAnim.setValue(16);
-    Animated.parallel([
-      Animated.timing(fadeAnim,  { toValue: 1, duration: 320, useNativeDriver: false }),
-      Animated.timing(slideAnim, { toValue: 0, duration: 320, useNativeDriver: false }),
-    ]).start();
+  useEffect(() => {
+    if (startAtProfile) {
+      setMode('profile');
+      if (propUserId) {
+        setUserId(propUserId);
+      }
+      if (googleTimeoutRef.current) {
+        clearTimeout(googleTimeoutRef.current);
+        googleTimeoutRef.current = null;
+      }
+      setLoading(false);
+      setError('');
+    } else if (propUserId) {
+      setUserId(propUserId);
+    }
+  }, [startAtProfile, propUserId]);
+
+  const switchMode = (m) => { 
+    Keyboard.dismiss(); 
+    setError(''); 
+    setMode(m); 
   };
-
-  useEffect(() => { animateIn(); }, [mode]);
-
-  const switchMode = (m) => { setError(''); setMode(m); };
 
   // ── Email sign up
   const handleSignup = async () => {
+    Keyboard.dismiss();
     if (!email.trim() || !password.trim()) { setError('Please fill in all fields'); return; }
     if (password.length < 6) { setError('Password must be at least 6 characters'); return; }
     setLoading(true); setError('');
+    
     try {
-      const data = await signUp(email.trim(), password);
+      await signUp(email.trim(), password);
 
-// Wait for Supabase to confirm the session before proceeding
-// Without this, the user ID doesn't exist in auth.users yet
-let confirmedId = data.user?.id;
-if (!confirmedId) {
-  // Try getting the session directly
-  const { data: sessionData } = await supabase.auth.getSession();
-  confirmedId = sessionData?.session?.user?.id;
-}
+      const { data: sessionData } = await supabase.auth.getSession();
+      
+      if (!sessionData?.session) {
+        setError('Check your email to verify, OR turn off "Confirm Email" in Supabase settings.');
+        setLoading(false);
+        return;
+      }
 
-if (!confirmedId) {
-  setError('Sign up failed — please try again.');
-  return;
-}
-
-setUserId(confirmedId);
-switchMode('profile');
+      setUserId(sessionData.session.user.id);
+      setLoading(false);
+      switchMode('profile');
     } catch (e) {
       setError(e.message?.includes('already') ? 'This email is already registered. Sign in instead.' : (e.message || 'Sign up failed.'));
-    } finally { setLoading(false); }
+      setLoading(false);
+    }
   };
 
   // ── Email sign in
   const handleLogin = async () => {
+    Keyboard.dismiss();
     if (!email.trim() || !password.trim()) { setError('Please fill in all fields'); return; }
     setLoading(true); setError('');
+    
     try {
-      await signIn(email.trim(), password);
+      const authData = await signIn(email.trim(), password);
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onAuthSuccess();
+      await onAuthSuccess(authData?.session || null);
+      setLoading(false);
     } catch (e) {
-      setError('Incorrect email or password.');
-    } finally { setLoading(false); }
+      if (e.message?.includes('Email not confirmed')) {
+        setError('Please verify your email address first.');
+      } else if (e.message?.includes('Could not finish signing in')) {
+        setError(e.message);
+      } else {
+        setError('Incorrect email or password.');
+      }
+      setLoading(false);
+    }
   };
 
   // ── Google sign in
   const handleGoogle = async () => {
-  setLoading(true); setError('');
-  try {
-    const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: Platform.OS === 'web'
-          ? `${window.location.origin}`
-          : 'kore://auth/callback',
-        queryParams: {
-          access_type: 'offline',
-          prompt: 'consent',
-        },
-      },
-    });
-    if (error) throw error;
-  } catch (e) {
-    setError('Google sign in failed. Try email instead.');
-    setLoading(false);
-  }
-};
+    Keyboard.dismiss();
+    console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle start');
+    setLoading(true); setError('');
+    try {
+      await signInWithGoogle();
+      console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle signInWithGoogle returned', {
+        returnedSession: false,
+        handoffMode: 'listener_only',
+      });
+      if (googleTimeoutRef.current) {
+        clearTimeout(googleTimeoutRef.current);
+      }
+      googleTimeoutRef.current = setTimeout(() => {
+        console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle timeout fallback');
+        setLoading(false);
+        setError('Google sign in completed, but the app did not finish loading. Please try again.');
+        console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle loading cleared');
+        console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle error set', {
+          message: 'Google sign in completed, but the app did not finish loading. Please try again.',
+        });
+      }, 7000);
+    } catch (e) {
+      if (googleTimeoutRef.current) {
+        clearTimeout(googleTimeoutRef.current);
+        googleTimeoutRef.current = null;
+      }
+      if (e.message !== 'cancel') {
+        setError('Google sign in failed. Try email instead.');
+        console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle error set', {
+          message: 'Google sign in failed. Try email instead.',
+        });
+      }
+      setLoading(false);
+      console.log('[GOOGLE_AUTH_DEBUG] AuthScreen handleGoogle loading cleared');
+    }
+  };
 
   // ── Profile creation after signup
   const handleCreateProfile = async () => {
-  if (!username.trim())     { setError('Username is required'); return; }
-  if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('Letters, numbers and underscores only'); return; }
-  if (!displayName.trim())  { setError('Display name is required'); return; }
-  setLoading(true); setError('');
-  try {
-    const available = await checkUsernameAvailable(username.trim().toLowerCase());
-    if (!available) { setError('Username taken — try another'); setLoading(false); return; }
+    Keyboard.dismiss();
+    if (!username.trim())     { setError('Username is required'); return; }
+    if (!/^[a-zA-Z0-9_]+$/.test(username)) { setError('Letters, numbers and underscores only'); return; }
+    if (!displayName.trim())  { setError('Display name is required'); return; }
+    setLoading(true); setError('');
+    
+    try {
+      const available = await checkUsernameAvailable(username.trim().toLowerCase());
+      if (!available) { setError('Username taken — try another'); setLoading(false); return; }
 
-    const googleAvatar = await getGoogleAvatarUrl();
+      const googleAvatar = await getGoogleAvatarUrl();
 
-    // On production, auth user may not be committed yet — retry up to 5 times
-    let lastError;
-    for (let attempt = 0; attempt < 5; attempt++) {
-      try {
-        await updateProfile(userId, {
-  username: username.trim().toLowerCase(),
-  display_name: displayName.trim(),
-  avatar_color: avatarColor,
-  avatar_url: googleAvatar || null,
-});
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        onAuthSuccess();
-        return;
-      } catch (e) {
-        lastError = e;
-        if (e.message?.includes('foreign key')) {
-          // Auth user not committed yet — wait and retry
-          await new Promise(res => setTimeout(res, 1000));
-        } else {
-          throw e; // Different error — don't retry
-        }
-      }
+      await upsertProfile({
+        userId,
+        username: username.trim().toLowerCase(),
+        displayName: displayName.trim(),
+        avatarColor,
+        avatarUrl: googleAvatar || null,
+      });
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      await AsyncStorage.removeItem('kore_onboarded'); // Force onboarding for new accounts
+      await onAuthSuccess();
+      setLoading(false);
+    } catch (e) {
+      setError(e.message || 'Could not create profile.');
+      setLoading(false);
     }
-    throw lastError;
-  } catch (e) {
-    setError(e.message || 'Could not create profile.');
-  } finally { setLoading(false); }
-};
+  };
 
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : '#E0DFDD';
@@ -162,13 +192,13 @@ switchMode('profile');
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
-          {/* Logo */}
           <View style={styles.logoWrap}>
             <Text style={[styles.logo, { color: colors.ember }]}>コレ</Text>
             <Text style={[styles.appName, { color: colors.ink }]}>Kore</Text>
           </View>
 
-          <Animated.View style={{ opacity: fadeAnim, transform: [{ translateY: slideAnim }] }}>
+          {/* FIX: Animations completely removed so the layout never crashes to a white screen */}
+          <View>
 
             {/* ── WELCOME ── */}
             {mode === 'welcome' && (
@@ -178,7 +208,6 @@ switchMode('profile');
                   Save your history, ratings and streak across every device.
                 </Text>
 
-                {/* Google */}
                 <TouchableOpacity
                   style={[styles.googleBtn, { backgroundColor: cardBg, borderColor: borderC }]}
                   onPress={handleGoogle}
@@ -194,6 +223,8 @@ switchMode('profile');
                   <Text style={[styles.dividerText, { color: colors.charcoal }]}>or</Text>
                   <View style={[styles.dividerLine, { backgroundColor: borderC }]} />
                 </View>
+
+                {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
                 <TouchableOpacity
                   style={[styles.btnPrimary, { backgroundColor: colors.ink }]}
@@ -232,7 +263,6 @@ switchMode('profile');
               <View style={[styles.card, { backgroundColor: cardBg, borderColor: borderC }]}>
                 <Text style={[styles.cardTitle, { color: colors.ink }]}>Sign in</Text>
 
-                {/* Google */}
                 <TouchableOpacity
                   style={[styles.googleBtn, { backgroundColor: cardBg, borderColor: borderC }]}
                   onPress={handleGoogle}
@@ -284,7 +314,6 @@ switchMode('profile');
               <View style={[styles.card, { backgroundColor: cardBg, borderColor: borderC }]}>
                 <Text style={[styles.cardTitle, { color: colors.ink }]}>Create account</Text>
 
-                {/* Google */}
                 <TouchableOpacity
                   style={[styles.googleBtn, { backgroundColor: cardBg, borderColor: borderC }]}
                   onPress={handleGoogle}
@@ -337,7 +366,6 @@ switchMode('profile');
                 <Text style={[styles.cardTitle, { color: colors.ink }]}>Set up your profile</Text>
                 <Text style={[styles.cardSub, { color: colors.charcoal }]}>Almost there — just a few details.</Text>
 
-                {/* Avatar preview */}
                 <View style={styles.avatarPreviewWrap}>
                   <View style={[styles.avatarPreview, { backgroundColor: avatarColor }]}>
                     <Text style={styles.avatarInitials}>{initials}</Text>
@@ -384,7 +412,7 @@ switchMode('profile');
               </View>
             )}
 
-          </Animated.View>
+          </View>
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>

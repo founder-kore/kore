@@ -10,13 +10,20 @@ import * as ImagePicker from 'expo-image-picker';
 import { useTheme } from '../constants/theme';
 import {
   updateProfile, uploadAvatar, checkUsernameAvailable,
-  getCurrentUser, getGoogleAvatarUrl,
+  getCurrentUser, getGoogleAvatarUrl, getRenderableAvatarUrl, resolveAvatarUrl,
 } from '../services/supabase';
 
+const AVATAR_DEBUG_PREFIX = '[AVATAR_DEBUG]';
 const AVATAR_COLORS = [
   '#E8630A', '#4D9FFF', '#7F77DD',
   '#1D9E75', '#D4537E', '#C77DFF',
 ];
+
+function getAvatarSource(avatarUri) {
+  const normalizedUri = typeof avatarUri === 'string' ? avatarUri.trim() : '';
+  if (!normalizedUri) return null;
+  return { uri: normalizedUri, cache: 'reload' };
+}
 
 export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   const { colors, isDark } = useTheme();
@@ -24,7 +31,7 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   const [displayName,   setDisplayName]   = useState(userProfile?.display_name || '');
   const [username,      setUsername]      = useState(userProfile?.username || '');
   const [avatarColor,   setAvatarColor]   = useState(userProfile?.avatar_color || '#E8630A');
-  const [avatarUrl,     setAvatarUrl]     = useState(userProfile?.avatar_url || null);
+  const [avatarUrl,     setAvatarUrl]     = useState(getRenderableAvatarUrl(userProfile?.avatar_url) || null);
   const [localImageUri, setLocalImageUri] = useState(null);
 
   const [usernameState, setUsernameState] = useState('idle');
@@ -35,15 +42,30 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   const fileInputRef   = useRef(null); // web file input ref
   const originalUsername = userProfile?.username || '';
 
+  useEffect(() => {
+    setDisplayName(userProfile?.display_name || '');
+    setUsername(userProfile?.username || '');
+    setAvatarColor(userProfile?.avatar_color || '#E8630A');
+    setAvatarUrl(getRenderableAvatarUrl(userProfile?.avatar_url) || null);
+    setLocalImageUri(null);
+    setError('');
+    setUsernameState('idle');
+
+    if (Platform.OS === 'web' && fileInputRef.current) {
+      fileInputRef.current._file = null;
+      fileInputRef.current.value = '';
+    }
+  }, [userProfile]);
+
   const cardBg  = isDark ? '#1A1A1A' : colors.snow;
   const borderC = isDark ? '#2A2A2A' : colors.border;
 
   // Auto-load Google avatar if no avatar set yet
   useEffect(() => {
-    if (!avatarUrl) {
+    if (!avatarUrl && !localImageUri) {
       getGoogleAvatarUrl().then(url => { if (url) setAvatarUrl(url); });
     }
-  }, []);
+  }, [avatarUrl, localImageUri]);
 
   // Inject hidden file input on web
   useEffect(() => {
@@ -58,7 +80,9 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
       const url = URL.createObjectURL(file);
       setLocalImageUri(url);
       // Store the actual File object for upload
-      fileInputRef._file = file;
+      if (fileInputRef.current) {
+        fileInputRef.current._file = file;
+      }
     });
     document.body.appendChild(input);
     fileInputRef.current = input;
@@ -85,26 +109,75 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
   }, [username]);
 
   const handlePickImage = async () => {
+    console.log(`${AVATAR_DEBUG_PREFIX} Change photo tapped`, {
+      platform: Platform.OS,
+    });
+
     if (Platform.OS === 'web') {
       // On web, trigger the hidden file input
+      console.log(`${AVATAR_DEBUG_PREFIX} opening web file input`);
       if (fileInputRef.current) fileInputRef.current.click();
       return;
     }
 
-    // On native, use expo-image-picker
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') { setError('Camera roll permission needed'); return; }
+    try {
+      setError('');
+      const currentPermission = await ImagePicker.getMediaLibraryPermissionsAsync();
+      console.log(`${AVATAR_DEBUG_PREFIX} current media permission`, {
+        status: currentPermission?.status || null,
+        granted: currentPermission?.granted ?? null,
+        accessPrivileges: currentPermission?.accessPrivileges || null,
+      });
 
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaType.Images,
-      allowsEditing: true,
-      aspect: [1, 1],
-      quality: 0.8,
-    });
+      let finalPermission = currentPermission;
+      const permissionGranted = currentPermission?.granted === true || currentPermission?.status === 'granted';
 
-    if (!result.canceled && result.assets[0]) {
-      setLocalImageUri(result.assets[0].uri);
+      if (!permissionGranted) {
+        finalPermission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+        console.log(`${AVATAR_DEBUG_PREFIX} requested media permission`, {
+          status: finalPermission?.status || null,
+          granted: finalPermission?.granted ?? null,
+          accessPrivileges: finalPermission?.accessPrivileges || null,
+        });
+      }
+
+      const hasLibraryAccess = finalPermission?.granted === true || finalPermission?.status === 'granted';
+      if (!hasLibraryAccess) {
+        setError('Photo library access is required to change your avatar.');
+        return;
+      }
+
+      console.log(`${AVATAR_DEBUG_PREFIX} launching image library`);
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ['images'],
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 0.8,
+      });
+
+      const canceled = result?.canceled ?? result?.cancelled ?? false;
+      const selectedAsset = Array.isArray(result?.assets) ? result.assets[0] : null;
+      console.log(`${AVATAR_DEBUG_PREFIX} image picker result`, {
+        canceled,
+        assetCount: Array.isArray(result?.assets) ? result.assets.length : 0,
+        selectedUri: selectedAsset?.uri || null,
+      });
+
+      if (canceled) {
+        return;
+      }
+
+      if (!selectedAsset?.uri) {
+        throw new Error('No image was selected.');
+      }
+
+      setLocalImageUri(selectedAsset.uri);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    } catch (e) {
+      console.log(`${AVATAR_DEBUG_PREFIX} image picker error`, {
+        message: e?.message || String(e),
+      });
+      setError(e?.message || 'Could not open your photo library. Try again.');
     }
   };
 
@@ -128,38 +201,67 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
       // Upload new photo if picked
       if (localImageUri) {
         let mime = 'image/jpeg';
-        let fileUri = localImageUri;
 
-        if (Platform.OS === 'web' && fileInputRef._file) {
-          // Web: upload the File object directly
-          const file = fileInputRef._file;
+        if (Platform.OS === 'web' && fileInputRef.current?._file) {
+          const file = fileInputRef.current._file;
           mime = file.type || 'image/jpeg';
-          const ext = mime.includes('png') ? 'png' : 'jpg';
-          const path = `${user.id}/avatar.${ext}`;
-
-          const { createClient } = await import('@supabase/supabase-js');
-          const { supabase } = await import('../services/supabase');
-          const { error: uploadError } = await supabase.storage
-            .from('avatars')
-            .upload(path, file, { upsert: true, contentType: mime });
-
-          if (uploadError) throw uploadError;
-
-          const { data } = supabase.storage.from('avatars').getPublicUrl(path);
-          updates.avatar_url = `${data.publicUrl}?t=${Date.now()}`;
+          console.log(`${AVATAR_DEBUG_PREFIX} avatar upload start`, {
+            userId: user.id,
+            platform: Platform.OS,
+            mime,
+            source: 'web-file',
+          });
+          updates.avatar_url = await uploadAvatar(user.id, file, mime);
         } else {
-          // Native: use existing uploadAvatar function
-          const ext = fileUri.split('.').pop()?.toLowerCase() || 'jpg';
+          const ext = localImageUri.split('.').pop()?.toLowerCase() || 'jpg';
           mime = ext === 'png' ? 'image/png' : 'image/jpeg';
-          const url = await uploadAvatar(user.id, fileUri, mime);
-          updates.avatar_url = url;
+          console.log(`${AVATAR_DEBUG_PREFIX} avatar upload start`, {
+            userId: user.id,
+            platform: Platform.OS,
+            mime,
+            source: 'native-uri',
+            localImageUri,
+          });
+          updates.avatar_url = await uploadAvatar(user.id, localImageUri, mime);
         }
+        console.log(`${AVATAR_DEBUG_PREFIX} avatar upload success`, {
+          userId: user.id,
+          avatarUrl: updates.avatar_url,
+        });
       }
 
+      console.log(`${AVATAR_DEBUG_PREFIX} profile update start`, {
+        userId: user.id,
+        hasAvatarUpdate: Boolean(updates.avatar_url),
+        avatarField: 'avatar_url',
+        avatarUrlToSave: updates.avatar_url ?? null,
+      });
       await updateProfile(user.id, updates);
+      console.log(`${AVATAR_DEBUG_PREFIX} profile update success`, {
+        userId: user.id,
+        avatarUrl: updates.avatar_url || avatarUrl || null,
+      });
+      const savedAvatarUrl = await resolveAvatarUrl(updates.avatar_url || avatarUrl, { cacheBust: true });
+      if (updates.avatar_url) {
+        setAvatarUrl(savedAvatarUrl);
+        setLocalImageUri(null);
+        if (Platform.OS === 'web' && fileInputRef.current) {
+          fileInputRef.current._file = null;
+          fileInputRef.current.value = '';
+        }
+      }
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      onSave({ ...userProfile, ...updates, avatar_url: updates.avatar_url || avatarUrl });
+      const savedProfilePayload = { ...(userProfile || {}), ...updates, avatar_url: savedAvatarUrl };
+      await onSave?.(savedProfilePayload);
+      console.log(`${AVATAR_DEBUG_PREFIX} profile handoff success`, {
+        avatarField: 'avatar_url',
+        avatarUrl: savedAvatarUrl || null,
+        profilePayload: savedProfilePayload,
+      });
     } catch (e) {
+      console.log(`${AVATAR_DEBUG_PREFIX} profile save error`, {
+        message: e?.message || String(e),
+      });
       setError(e.message || 'Could not save changes. Try again.');
     } finally { setSaving(false); }
   };
@@ -169,6 +271,7 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
     : (username || '?').slice(0, 2).toUpperCase();
 
   const displayImage = localImageUri || avatarUrl;
+  const displayImageSource = getAvatarSource(displayImage);
 
   const UsernameHint = () => {
     if (usernameState === 'checking') return <Text style={[styles.hint, { color: colors.charcoal }]}>Checking...</Text>;
@@ -207,8 +310,8 @@ export default function EditProfileScreen({ onBack, userProfile, onSave }) {
           <View style={styles.avatarCenter}>
 
             <TouchableOpacity style={styles.avatarWrap} onPress={handlePickImage} activeOpacity={0.8}>
-              {displayImage ? (
-                <Image source={{ uri: displayImage }} style={styles.avatarImg} />
+              {displayImageSource ? (
+                <Image testID="edit-profile-avatar-image" source={displayImageSource} style={styles.avatarImg} />
               ) : (
                 <View style={[styles.avatar, { backgroundColor: avatarColor }]}>
                   <Text style={styles.avatarInitials}>{initials}</Text>
